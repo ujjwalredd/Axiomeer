@@ -2,7 +2,9 @@
 
 ### The Marketplace for AI Agents
 
-**An open marketplace where AI agents discover, evaluate, and consume tools, datasets, APIs, and other AI products -- with built-in trust, validation, and auditing.**
+**Status (v1): Prototype / reference implementation**
+Axiomeer ships the full marketplace loop — **publish → shop → execute → validate → receipts → abstain** — and includes a mix of **demo providers** plus a **real provider example (Open-Meteo)**.  
+The core value is the routing + trust + auditing layer; the marketplace becomes “real” as the community adds more providers.
 
 Think of it as an **App Store for AI**. Anyone can publish a product (a dataset, an API, a bot, a model endpoint). Any AI agent can shop the marketplace, pick the best product for the job, execute it, validate what comes back, and ingest the results -- all through a single standardized protocol.
 
