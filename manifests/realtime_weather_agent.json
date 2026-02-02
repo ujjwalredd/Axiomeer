@@ -1,0 +1,12 @@
+{
+  "id": "realtime_weather_agent",
+  "name": "Realtime Weather Agent v2",
+  "description": "Returns current weather with sources and timestamps.",
+  "capabilities": ["weather", "realtime", "citations"],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "latency_est_ms": 800,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/openmeteo_weather"
+}
