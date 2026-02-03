@@ -1,0 +1,12 @@
+{
+  "id": "open_library",
+  "name": "Open Library Book Search",
+  "description": "Search for books by title, author, or topic. Returns titles, authors, and publication years from Open Library's catalog of 20M+ books.",
+  "capabilities": ["search", "docs", "citations"],
+  "freshness": "daily",
+  "citations_supported": true,
+  "latency_est_ms": 600,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/openlibrary"
+}

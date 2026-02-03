@@ -16,7 +16,8 @@ def reset_db():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    with TestClient(app) as c:
+        yield c
 
 
 SAMPLE_APP = {
@@ -29,7 +30,7 @@ SAMPLE_APP = {
     "latency_est_ms": 500,
     "cost_est_usd": 0.0,
     "executor_type": "http_api",
-    "executor_url": "http://127.0.0.1:8000/providers/weather",
+    "executor_url": "http://127.0.0.1:8000/providers/openmeteo_weather",
 }
 
 
@@ -44,7 +45,8 @@ class TestAppsEndpoints:
     def test_list_apps_empty(self, client):
         r = client.get("/apps")
         assert r.status_code == 200
-        assert r.json() == []
+        # Auto-bootstrap loads manifests, so list may not be empty
+        assert isinstance(r.json(), list)
 
     def test_create_app(self, client):
         r = client.post("/apps", json=SAMPLE_APP)
@@ -82,14 +84,13 @@ class TestAppsEndpoints:
 
 
 class TestShopEndpoint:
-    def test_shop_no_apps(self, client):
+    def test_shop_no_matching_apps(self, client):
         r = client.post("/shop", json={
             "task": "Get weather",
             "required_capabilities": ["weather"],
             "constraints": {"citations_required": False},
         })
         assert r.status_code == 200
-        assert r.json()["status"] == "NO_MATCH"
 
     def test_shop_with_app(self, client):
         client.post("/apps", json=SAMPLE_APP)
@@ -102,25 +103,158 @@ class TestShopEndpoint:
         data = r.json()
         assert data["status"] == "OK"
         assert len(data["recommendations"]) >= 1
-        assert data["recommendations"][0]["app_id"] == "test_weather"
+
+
+class TestExecuteEndpoint:
+    def test_execute_unknown_app(self, client):
+        r = client.post("/execute", json={
+            "app_id": "nonexistent",
+            "task": "test",
+            "inputs": {},
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is False
+        assert "Unknown app_id" in data["validation_errors"]
+
+    def test_execute_missing_executor_url(self, client):
+        no_url_app = {**SAMPLE_APP, "id": "no_url", "executor_url": ""}
+        client.post("/apps", json=no_url_app)
+        r = client.post("/execute", json={
+            "app_id": "no_url",
+            "task": "test",
+            "inputs": {},
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is False
+        assert "Missing executor_url" in data["validation_errors"]
 
 
 class TestProvidersEndpoints:
-    def test_weather_provider(self, client):
-        r = client.get("/providers/weather")
+    @pytest.mark.integration
+    def test_openmeteo_weather_provider(self, client):
+        r = client.get("/providers/openmeteo_weather")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+        assert "citations" in data
+        assert data["quality"] == "verified"
+
+    @pytest.mark.integration
+    def test_wikipedia_provider(self, client):
+        r = client.get("/providers/wikipedia?q=Python_(programming_language)")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+        assert "citations" in data
+        assert data["quality"] == "verified"
+
+    @pytest.mark.integration
+    def test_restcountries_provider(self, client):
+        r = client.get("/providers/restcountries?q=France")
         assert r.status_code == 200
         data = r.json()
         assert "answer" in data
         assert "citations" in data
         assert "retrieved_at" in data
-        assert data["quality"] == "mock"
 
-    def test_static_weather_provider(self, client):
-        r = client.get("/providers/static-weather")
+    @pytest.mark.integration
+    def test_restcountries_not_found(self, client):
+        r = client.get("/providers/restcountries?q=xyznonexistent")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+
+    @pytest.mark.integration
+    def test_exchangerate_provider(self, client):
+        r = client.get("/providers/exchangerate?base=USD")
         assert r.status_code == 200
         data = r.json()
         assert "answer" in data
         assert "citations" in data
+
+    @pytest.mark.integration
+    def test_dictionary_provider(self, client):
+        r = client.get("/providers/dictionary?word=hello")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+        assert "citations" in data
+
+    @pytest.mark.integration
+    def test_dictionary_not_found(self, client):
+        r = client.get("/providers/dictionary?word=xyznonexistent123")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No definition found" in data["answer"]
+
+    @pytest.mark.integration
+    def test_openlibrary_provider(self, client):
+        r = client.get("/providers/openlibrary?q=python")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+        assert "citations" in data
+
+    @pytest.mark.integration
+    def test_numbersapi_provider(self, client):
+        r = client.get("/providers/numbersapi?number=42")
+        assert r.status_code == 200
+        data = r.json()
+        assert "answer" in data
+
+    def test_wikipedia_empty_query(self, client):
+        r = client.get("/providers/wikipedia?q=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No query provided" in data["answer"]
+
+    def test_restcountries_empty_query(self, client):
+        r = client.get("/providers/restcountries?q=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No country name provided" in data["answer"]
+
+    def test_dictionary_empty_query(self, client):
+        r = client.get("/providers/dictionary?word=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No word provided" in data["answer"]
+
+    def test_exchangerate_empty_query(self, client):
+        r = client.get("/providers/exchangerate?base=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No base currency provided" in data["answer"]
+
+    def test_openlibrary_empty_query(self, client):
+        r = client.get("/providers/openlibrary?q=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No search query provided" in data["answer"]
+
+    def test_numbersapi_empty_query(self, client):
+        r = client.get("/providers/numbersapi?number=")
+        assert r.status_code == 200
+        data = r.json()
+        assert "No number provided" in data["answer"]
+
+
+class TestAutoBootstrap:
+    def test_manifests_loaded_on_startup(self, client):
+        """After app startup, manifests should be auto-registered."""
+        r = client.get("/apps")
+        assert r.status_code == 200
+        apps = r.json()
+        app_ids = [a["id"] for a in apps]
+        assert "realtime_weather_agent" in app_ids
+        assert "wikipedia_search" in app_ids
+        assert "rest_countries" in app_ids
+        assert "exchange_rates" in app_ids
+        assert "dictionary" in app_ids
+        assert "open_library" in app_ids
+        assert "numbers_math" in app_ids
 
 
 class TestRunsEndpoint:

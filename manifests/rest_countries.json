@@ -1,0 +1,12 @@
+{
+  "id": "rest_countries",
+  "name": "REST Countries Search",
+  "description": "Search for country information including capital, population, region, and languages. Covers all world countries.",
+  "capabilities": ["search", "docs", "citations"],
+  "freshness": "daily",
+  "citations_supported": true,
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/restcountries"
+}

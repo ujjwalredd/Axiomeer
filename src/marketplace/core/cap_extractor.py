@@ -6,13 +6,13 @@ ALLOWED_CAPS = {"weather", "finance", "search", "realtime", "citations", "math",
 
 DOMAIN_KEYWORDS = {
     "weather": ["weather", "temperature", "forecast", "rain", "snow", "humidity", "wind", "storm", "climate"],
-    "finance": ["cpi", "inflation", "stock", "market", "price", "gdp", "unemployment", "earnings", "revenue", "interest rate"],
-    "math": ["calculate", "compute", "solve", "equation", "derivative", "integral"],
+    "finance": ["cpi", "inflation", "stock", "market", "price", "gdp", "unemployment", "earnings", "revenue", "interest rate", "exchange rate", "currency", "forex", "dollar", "euro", "yen"],
+    "math": ["calculate", "compute", "solve", "equation", "derivative", "integral", "number", "prime", "factorial"],
     "coding": ["python", "javascript", "bug", "error", "stack trace", "compile", "code", "function"],
     "translate": ["translate", "translation", "in spanish", "in french", "in hindi"],
     "summarize": ["summarize", "summary", "tl;dr", "key points"],
-    "docs": ["documentation", "api docs", "readme", "spec", "schema"],
-    "search": ["search", "look up", "find", "who is", "what is", "where is"],
+    "docs": ["documentation", "api docs", "readme", "spec", "schema", "definition", "meaning", "dictionary", "define"],
+    "search": ["search", "look up", "find", "who is", "what is", "where is", "country", "capital", "population", "book", "author", "library"],
 }
 
 # Braces escaped because we use .format()

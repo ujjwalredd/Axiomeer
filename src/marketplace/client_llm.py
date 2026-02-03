@@ -20,19 +20,20 @@ def _post(path: str, payload: dict):
 
 def build_grounded_answer(question: str, evidence: dict) -> str:
     """Force the LLM to answer ONLY using evidence we provide."""
-    prompt = f"""You are answering a user question using ONLY the EVIDENCE below.
-If the evidence is insufficient, say "I don't have enough evidence to answer."
-Always include citations exactly as provided in the evidence.
-Do not invent any facts or sources.
+    answer_text = evidence.get("answer", "")
+    citations = evidence.get("citations", [])
+    cite_str = ", ".join(citations) if citations else "none"
 
-QUESTION:
-{question}
+    prompt = f"""Use the EVIDENCE to answer the QUESTION. Only use facts from the evidence. Do not make up anything.
 
-EVIDENCE (JSON):
-{json.dumps(evidence, indent=2)}
+QUESTION: {question}
 
-Return the final answer in 3-6 sentences.
-"""
+EVIDENCE: {answer_text}
+SOURCE: {cite_str}
+
+If the evidence does not answer the question, say "The available evidence does not answer this question."
+
+Write a 2-4 sentence answer:"""
     return ollama_generate(ANSWER_MODEL, prompt)
 
 

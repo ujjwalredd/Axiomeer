@@ -1,6 +1,8 @@
 import json
 import requests
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from time import perf_counter
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -18,9 +20,14 @@ from marketplace.storage.db import Base, engine, SessionLocal
 from marketplace.storage.models import AppListing
 from marketplace.storage.runs import Run
 
-app = FastAPI(title="Axiomeer", version="0.1.0")
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    bootstrap_manifests()
+    yield
 
-Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
 
 
 def get_db():
@@ -192,7 +199,7 @@ def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteRespon
         return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors)
 
     try:
-        r = requests.get(app_row.executor_url, timeout=10)
+        r = requests.get(app_row.executor_url, params=req.inputs, timeout=10)
         r.raise_for_status()
         payload = r.json()
     except Exception as e:
@@ -239,28 +246,7 @@ def list_runs(db: Session = Depends(get_db)):
     ]
 
 
-# ---- Real Providers ----
-
-@app.get("/providers/weather")
-def provider_weather():
-    now = datetime.now(timezone.utc).isoformat()
-    return {
-        "answer": "Indianapolis: 31 F, cloudy (mock data).",
-        "citations": ["mock://weather-provider/v1"],
-        "retrieved_at": now,
-        "quality": "mock",
-    }
-
-
-@app.get("/providers/static-weather")
-def provider_static_weather():
-    now = datetime.now(timezone.utc).isoformat()
-    return {
-        "answer": "Weather patterns are driven by solar heating, pressure gradients, and Earth's rotation (Coriolis).",
-        "citations": ["mock://static-weather-pack/v1"],
-        "retrieved_at": now,
-    }
-
+# ---- Providers ----
 
 @app.get("/providers/openmeteo_weather")
 def provider_openmeteo_weather(lat: float = 39.7684, lon: float = -86.1581):
@@ -328,3 +314,263 @@ def provider_wikipedia(q: str = "Python_(programming_language)"):
         "retrieved_at": now,
         "quality": "verified",
     }
+
+
+@app.get("/providers/restcountries")
+def provider_restcountries(q: str = "United States"):
+    """REST Countries provider. Free, no API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not q or not q.strip():
+        return {
+            "answer": "No country name provided.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    url = f"https://restcountries.com/v3.1/name/{q.strip()}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 404:
+            return {
+                "answer": f"No country found matching '{q}'.",
+                "citations": [],
+                "retrieved_at": now,
+                "quality": "verified",
+            }
+        r.raise_for_status()
+        data = r.json()
+        country = data[0] if data else {}
+        name = country.get("name", {}).get("common", q)
+        capital = ", ".join(country.get("capital", ["N/A"]))
+        region = country.get("region", "N/A")
+        population = country.get("population", "N/A")
+        languages = ", ".join(country.get("languages", {}).values()) if country.get("languages") else "N/A"
+        return {
+            "answer": f"{name}: Capital: {capital}, Region: {region}, Population: {population:,} , Languages: {languages}.",
+            "citations": [f"https://restcountries.com/v3.1/name/{q}"],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    except Exception as e:
+        return {
+            "answer": f"Error fetching country data: {e}",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+
+@app.get("/providers/exchangerate")
+def provider_exchangerate(base: str = "USD"):
+    """Exchange rate provider. Free, no API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not base or not base.strip():
+        return {
+            "answer": "No base currency provided.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    base = base.strip().upper()
+    url = f"https://open.er-api.com/v6/latest/{base}"
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("result") != "success":
+            return {
+                "answer": f"Exchange rate API returned non-success for '{base}'.",
+                "citations": [],
+                "retrieved_at": now,
+                "quality": "verified",
+            }
+        rates = data.get("rates", {})
+        majors = ["EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "INR", "CNY"]
+        rate_strs = [f"{c}: {rates[c]}" for c in majors if c in rates and c != base]
+        return {
+            "answer": f"Exchange rates for 1 {base}: {', '.join(rate_strs[:6])}. Last updated: {data.get('time_last_update_utc', 'N/A')}.",
+            "citations": [f"https://open.er-api.com/v6/latest/{base}"],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    except Exception as e:
+        return {
+            "answer": f"Error fetching exchange rates: {e}",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+
+@app.get("/providers/dictionary")
+def provider_dictionary(word: str = "hello"):
+    """Free Dictionary API provider. No API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not word or not word.strip():
+        return {
+            "answer": "No word provided.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    word = word.strip().lower()
+    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 404:
+            return {
+                "answer": f"No definition found for '{word}'.",
+                "citations": [],
+                "retrieved_at": now,
+                "quality": "verified",
+            }
+        r.raise_for_status()
+        data = r.json()
+        entry = data[0] if data else {}
+        meanings = entry.get("meanings", [])
+        defs = []
+        for m in meanings[:3]:
+            part = m.get("partOfSpeech", "")
+            d = m.get("definitions", [{}])[0].get("definition", "")
+            defs.append(f"({part}) {d}")
+        return {
+            "answer": f"{word}: {'; '.join(defs)}",
+            "citations": [f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    except Exception as e:
+        return {
+            "answer": f"Error fetching definition: {e}",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+
+@app.get("/providers/openlibrary")
+def provider_openlibrary(q: str = "python programming"):
+    """Open Library book search. Free, no API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not q or not q.strip():
+        return {
+            "answer": "No search query provided.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    try:
+        r = requests.get(
+            "https://openlibrary.org/search.json",
+            params={"q": q.strip(), "limit": 3},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        docs = data.get("docs", [])
+        if not docs:
+            return {
+                "answer": f"No books found for '{q}'.",
+                "citations": [],
+                "retrieved_at": now,
+                "quality": "verified",
+            }
+        results = []
+        for doc in docs[:3]:
+            title = doc.get("title", "Unknown")
+            author = ", ".join(doc.get("author_name", ["Unknown"]))
+            year = doc.get("first_publish_year", "N/A")
+            results.append(f'"{title}" by {author} ({year})')
+        return {
+            "answer": f"Books matching '{q}': {'; '.join(results)}.",
+            "citations": [f"https://openlibrary.org/search?q={q}"],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    except Exception as e:
+        return {
+            "answer": f"Error searching books: {e}",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+
+@app.get("/providers/numbersapi")
+def provider_numbersapi(number: str = "42"):
+    """Numbers API -- math facts. Free, no API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not number or not number.strip():
+        return {
+            "answer": "No number provided.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    number = number.strip()
+    url = f"http://numbersapi.com/{number}/math"
+    try:
+        r = requests.get(url, params={"json": ""}, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        text = data.get("text", f"No fact found for {number}.")
+        return {
+            "answer": text,
+            "citations": [f"http://numbersapi.com/{number}"],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    except Exception as e:
+        return {
+            "answer": f"Error fetching number fact: {e}",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+
+# ---- Auto-Bootstrap ----
+
+MANIFESTS_DIR = Path(__file__).resolve().parent.parent.parent / "manifests"
+
+
+def bootstrap_manifests():
+    """Auto-register all manifests (idempotent upsert)."""
+    if not MANIFESTS_DIR.exists():
+        return
+    db = SessionLocal()
+    try:
+        for manifest_path in sorted(MANIFESTS_DIR.glob("*.json")):
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                app_id = manifest.get("id")
+                if not app_id:
+                    continue
+                row = db.get(AppListing, app_id)
+                if row is None:
+                    row = AppListing(id=app_id)
+                    db.add(row)
+                row.name = manifest.get("name", app_id)
+                row.description = manifest.get("description", "")
+                row.capabilities = ",".join(manifest.get("capabilities", []))
+                row.freshness = manifest.get("freshness", "static")
+                row.citations_supported = manifest.get("citations_supported", True)
+                row.latency_est_ms = manifest.get("latency_est_ms", 500)
+                row.cost_est_usd = manifest.get("cost_est_usd", 0.0)
+                row.executor_type = manifest.get("executor_type", "http_api")
+                row.executor_url = manifest.get("executor_url", "")
+                db.commit()
+            except Exception:
+                continue
+    finally:
+        db.close()

@@ -1,0 +1,12 @@
+{
+  "id": "dictionary",
+  "name": "English Dictionary",
+  "description": "Look up English word definitions, parts of speech, and meanings. Uses the Free Dictionary API.",
+  "capabilities": ["search", "docs", "citations"],
+  "freshness": "static",
+  "citations_supported": true,
+  "latency_est_ms": 300,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/dictionary"
+}

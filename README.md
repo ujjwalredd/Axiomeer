@@ -1,6 +1,6 @@
 ![Axiomeer](Test%20Images/Banner.png)
 
-# Axiomeer (v1)
+# Axiomeer (v2)
 
 ### The Marketplace for AI Agents
 
@@ -10,7 +10,7 @@ Think of it as an **App Store for AI**. Anyone can publish a product (a dataset,
 
 This is not another tool-calling framework. This is **infrastructure for an AI-to-AI economy** where agents autonomously find and consume the right resources, and every transaction is verified.
 
-> **Status: v1 Prototype** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v1 ships with demo providers (weather via Open-Meteo, mock endpoints for testing). The architecture is built so that **any HTTP endpoint returning structured JSON can be a product** -- the project needs contributors to add real providers and expand the catalog. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
+> **Status: v2** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v2 ships with **7 real providers** (weather, Wikipedia, country data, exchange rates, dictionary, book search, math facts) -- all free, no API keys. The execute pipeline now forwards query inputs to providers. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
 
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
@@ -95,7 +95,7 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 - **Computation** -- code execution sandboxes, math solvers, data processing pipelines
 - **Aggregators** -- products that themselves call multiple sources and return consolidated results
 
-> v1 ships with weather providers (Open-Meteo + mock). The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
+> v2 ships with 7 real providers across weather, search, finance, docs, and math. The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
 
 **Where this is headed:**
 - An agent asks: *"I need current stock data with citations under 500ms"* -- the marketplace finds the best provider, executes it, validates the citations, and delivers verified data
@@ -203,16 +203,26 @@ No paid APIs are required. All LLM inference runs locally through Ollama.
 │           ├── models.py             # AppListing ORM model
 │           └── runs.py               # Run receipt ORM model
 ├── tests/                              # Pytest test suite
+│   ├── conftest.py                    # Shared fixtures and test config
 │   ├── test_api.py                    # API endpoint tests
 │   ├── test_cap_extractor.py          # Capability extraction tests
 │   ├── test_evidence_quality.py       # Evidence quality tests
 │   ├── test_router.py                 # Recommendation engine tests
 │   └── test_validate.py              # Output validation tests
-├── manifests/
-│   └── realtime_weather_agent.json    # Example app manifest
-├── Test Images/                        # Demo screenshots
+├── manifests/                          # Provider manifests (auto-loaded on startup)
+│   ├── realtime_weather_agent.json
+│   ├── wikipedia_search.json
+│   ├── rest_countries.json
+│   ├── exchange_rates.json
+│   ├── dictionary.json
+│   ├── open_library.json
+│   └── numbers_math.json
+├── Test Images/                        # Banner assets and test results
+│   ├── Axiomeer.gif
+│   ├── Banner.png
+│   └── v2-results/test-results.md
 ├── .env.example                        # Environment variable template
-├── marketplace.db                      # SQLite database (auto-created)
+├── .gitignore                          # Git ignore rules
 ├── pyproject.toml                      # Project metadata and dependencies
 └── README.md
 ```
@@ -377,10 +387,12 @@ Example: `manifests/realtime_weather_agent.json`
 | `citations_supported` | bool | Whether the app returns citations |
 | `latency_est_ms` | int | Estimated execution latency in ms |
 | `cost_est_usd` | float | Estimated cost per execution |
-| `executor_type` | string | Executor protocol (v1 supports `http_api` only) |
+| `executor_type` | string | Executor protocol (currently supports `http_api` only) |
 | `executor_url` | string | HTTP endpoint the marketplace calls to execute this app |
 
 ### 2. Publish to the marketplace
+
+All manifests in `manifests/` are **auto-loaded on server startup**. To manually publish or update a listing:
 
 ```bash
 python -m marketplace.cli publish manifests/realtime_weather_agent.json
@@ -430,10 +442,13 @@ All endpoints are available at `http://127.0.0.1:8000`. Full interactive documen
 | `POST` | `/shop` | Get ranked recommendations for a task |
 | `POST` | `/execute` | Execute an app, validate output, log receipt |
 | `GET` | `/runs` | List recent execution receipts (limit 50) |
-| `GET` | `/providers/weather` | Mock weather provider (test data) |
-| `GET` | `/providers/static-weather` | Mock static weather provider |
-| `GET` | `/providers/openmeteo_weather` | Real Open-Meteo weather (free, no API key) |
-| `GET` | `/providers/wikipedia?q={title}` | Real Wikipedia summary (free, no API key) |
+| `GET` | `/providers/openmeteo_weather?lat=&lon=` | Open-Meteo weather (free, no API key) |
+| `GET` | `/providers/wikipedia?q={title}` | Wikipedia summary (free, no API key) |
+| `GET` | `/providers/restcountries?q={name}` | Country info -- capital, population, languages (free) |
+| `GET` | `/providers/exchangerate?base={currency}` | Exchange rates for 150+ currencies (free) |
+| `GET` | `/providers/dictionary?word={word}` | English dictionary definitions (free) |
+| `GET` | `/providers/openlibrary?q={query}` | Book search -- 20M+ titles (free) |
+| `GET` | `/providers/numbersapi?number={n}` | Math facts about numbers (free) |
 
 ### Example: Shop request
 
@@ -752,7 +767,7 @@ The LLM answered using **only** the evidence provided, with proper citations. No
 
 ### What happens with mock/low-quality evidence
 
-If the provider returns mock data (e.g., the `/providers/weather` mock endpoint), the pipeline detects it and **abstains** instead of answering:
+If a provider returns mock/test data or data marked as low quality, the pipeline detects it and **abstains** instead of answering:
 
 ```
 ╭──────────────────────── Evidence Quality ──────────────────────────╮
@@ -801,16 +816,20 @@ If citations are required but the provider does not return them, the execution i
 
 ## Roadmap
 
-- [x] ~~Add test suite (pytest)~~
+- [x] ~~Add test suite (pytest) -- 83 tests~~
 - [x] ~~Move configuration to environment variables / `.env` file~~
-- [ ] Add more apps: local search index, docs summarizer, finance, math, code execution sandbox
-- [ ] Add manifest validation (JSON schema + allowlist enforcement)
-- [ ] Add trust scores per provider (failure rate, citation compliance)
-- [ ] Add multi-tool plans (LLM chains tool #1 into tool #2)
-- [ ] Add ingestion bundles (structured chunks/snippets for downstream LLMs)
-- [ ] Add authentication and API key support
-- [ ] Add Docker containerization
-
+- [x] ~~Replace mock providers with 7 real free-API providers~~
+- [x] ~~Auto-bootstrap manifests on startup~~
+- [x] ~~Fix execute pipeline (forward inputs to providers)~~
+- [x] ~~Anti-hallucination grounded answers with evidence quality checks~~
+- [ ] **Manifest hosting** -- Migrate manifests from local JSON files to MongoDB (or PostgreSQL) so providers can be registered, discovered, and managed remotely. This enables real-world deployment where multiple instances share a central registry.
+- [ ] **Cloud deployment** -- Dockerize the API and deploy to a cloud provider (AWS/GCP/Railway) with a persistent database, making the marketplace accessible for real-world integration testing.
+- [ ] **Improved LLM support** -- Support larger models (Mistral, Llama 3, GPT-4o) via configurable model backends. Add model benchmarking to compare grounding accuracy across model sizes.
+- [ ] **Structured input extraction** -- Use the LLM to extract structured query parameters from natural language (e.g., "weather in Tokyo" -> `{"lat": 35.68, "lon": 139.69}`) instead of passing empty inputs.
+- [ ] **Multi-tool plans** -- Let the LLM chain multiple providers in sequence (e.g., search country -> get exchange rate for that country's currency).
+- [ ] **Trust scores per provider** -- Track failure rate, latency percentiles, and citation compliance over time. Use scores to improve routing.
+- [ ] **Authentication and API keys** -- Add API key gating so third-party providers can register securely.
+- [ ] **Manifest validation** -- JSON schema + allowlist enforcement for provider registration.
 ---
 
 ## Contributing
@@ -839,7 +858,7 @@ python -m pip install -e ".[dev]"
 pytest -v
 ```
 
-All 67 tests should pass before making any changes.
+All 83 tests should pass before making any changes. Use `pytest -m "not integration"` to run without network access.
 
 ### 4. Start the API server
 
@@ -847,13 +866,12 @@ All 67 tests should pass before making any changes.
 uvicorn apps.api.main:app --reload
 ```
 
-### 5. Publish the example app and verify
+### 5. Verify apps are auto-loaded and test the flow
 
 ```bash
-python -m marketplace.cli publish manifests/realtime_weather_agent.json
-python -m marketplace.cli apps
-python -m marketplace.cli shop "weather" --auto-caps --execute-top
-python -m marketplace.cli runs
+python -m marketplace.cli apps                                          # all 7 manifests auto-loaded
+python -m marketplace.cli shop "weather" --auto-caps --execute-top      # shop + execute
+python -m marketplace.cli runs                                          # check audit log
 ```
 
 ### 6. Make your changes

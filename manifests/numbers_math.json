@@ -1,0 +1,12 @@
+{
+  "id": "numbers_math",
+  "name": "Numbers & Math Facts",
+  "description": "Returns interesting mathematical facts about numbers. Covers primes, special properties, and mathematical trivia.",
+  "capabilities": ["math", "docs"],
+  "freshness": "static",
+  "citations_supported": true,
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/numbersapi"
+}

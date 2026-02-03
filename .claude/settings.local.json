@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(grep:*)",
+      "Bash(tree:*)",
+      "Bash(ls:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(xargs:*)",
+      "Bash(find:*)",
+      "Bash(.venv/bin/python -m pytest:*)"
+    ]
+  }
+}
