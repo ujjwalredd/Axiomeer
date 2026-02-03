@@ -8,6 +8,8 @@ Think of it as an **App Store for AI**. Anyone can publish a product (a dataset,
 
 This is not another tool-calling framework. This is **infrastructure for an AI-to-AI economy** where agents autonomously find and consume the right resources, and every transaction is verified.
 
+> **Status: v1 Prototype** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v1 ships with demo providers (weather via Open-Meteo, mock endpoints for testing). The architecture is built so that **any HTTP endpoint returning structured JSON can be a product** -- the project needs contributors to add real providers and expand the catalog. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
+
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
 ---
@@ -82,16 +84,18 @@ They are complementary. An MCP server could be one of many providers listed in t
 
 ## The Vision
 
-The marketplace is designed to be the **connective layer for an AI-powered ecosystem**. The products in the catalog are not limited to simple API calls -- they can be anything an AI agent might need:
+The marketplace is designed to be the **connective layer for an AI-powered ecosystem**. The protocol is not limited to simple API calls -- it supports anything an AI agent might need:
 
-**What can be published:**
+**What can be published (the protocol supports all of these today):**
 - **APIs** -- weather, finance, search, geolocation, translation, any REST endpoint
 - **Datasets** -- structured data feeds, knowledge bases, document collections
 - **AI Bots / Model Endpoints** -- specialized models (code generation, medical Q&A, legal research) that other agents can delegate to
 - **Computation** -- code execution sandboxes, math solvers, data processing pipelines
 - **Aggregators** -- products that themselves call multiple sources and return consolidated results
 
-**What this enables:**
+> v1 ships with weather providers (Open-Meteo + mock). The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
+
+**Where this is headed:**
 - An agent asks: *"I need current stock data with citations under 500ms"* -- the marketplace finds the best provider, executes it, validates the citations, and delivers verified data
 - A customer builds a bot that needs weather + finance + document search -- instead of integrating three APIs manually, the bot shops the marketplace and the right providers are selected automatically
 - A new provider publishes a better weather API -- every agent in the ecosystem immediately has access to it, and the router will rank it against existing options
@@ -427,6 +431,7 @@ All endpoints are available at `http://127.0.0.1:8000`. Full interactive documen
 | `GET` | `/providers/weather` | Mock weather provider (test data) |
 | `GET` | `/providers/static-weather` | Mock static weather provider |
 | `GET` | `/providers/openmeteo_weather` | Real Open-Meteo weather (free, no API key) |
+| `GET` | `/providers/wikipedia?q={title}` | Real Wikipedia summary (free, no API key) |
 
 ### Example: Shop request
 

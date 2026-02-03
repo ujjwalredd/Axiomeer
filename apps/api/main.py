@@ -239,7 +239,7 @@ def list_runs(db: Session = Depends(get_db)):
     ]
 
 
-# ---- Mock Providers ----
+# ---- Real Providers ----
 
 @app.get("/providers/weather")
 def provider_weather():
@@ -286,6 +286,45 @@ def provider_openmeteo_weather(lat: float = 39.7684, lon: float = -86.1581):
     return {
         "answer": f"At {current.get('time','')}, temperature is {temp} C, weather_code={code}, wind_speed={wind} km/h (Open-Meteo).",
         "citations": ["https://open-meteo.com/"],
+        "retrieved_at": now,
+        "quality": "verified",
+    }
+
+
+@app.get("/providers/wikipedia")
+def provider_wikipedia(q: str = "Python_(programming_language)"):
+    """Wikipedia summary provider. Free, no API key."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not q or not q.strip():
+        return {
+            "answer": "No query provided. Please specify a topic to search.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{q}"
+    r = requests.get(url, timeout=10, headers={"User-Agent": "Axiomeer/0.1"})
+
+    if r.status_code == 404:
+        return {
+            "answer": f"No Wikipedia article found for '{q}'.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    r.raise_for_status()
+    data = r.json()
+
+    title = data.get("title", q)
+    extract = data.get("extract", "")
+    page_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+
+    return {
+        "answer": f"{title}: {extract}",
+        "citations": [page_url] if page_url else [f"https://en.wikipedia.org/wiki/{q}"],
         "retrieved_at": now,
         "quality": "verified",
     }
