@@ -255,7 +255,7 @@ Before setting up the project, ensure you have the following installed:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/axiomeer.git
+git clone https://github.com/ujjwalredd/axiomeer.git
 cd axiomeer
 ```
 
