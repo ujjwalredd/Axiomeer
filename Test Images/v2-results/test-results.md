@@ -174,7 +174,7 @@ All failure cases:
 |--------|--------|
 | Total providers tested | 7 |
 | Real data accuracy | 6/6 correct |
-| Fake data handling | 4/4 correctly refused |
+| Fake data handling | 3/3 correctly refused |
 | LLM hallucination | 0 instances |
 | End-to-end pipeline | Working (shop -> route -> execute -> validate -> ground) |
 | Unit tests | 83/83 pass |
