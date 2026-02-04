@@ -160,7 +160,6 @@ I cannot provide an answer to the question.
 | 1 | REST Countries | "Wakanda" | "No country found matching 'Wakanda'." | false | No |
 | 2 | Dictionary | "xyzblurgh" | "No definition found for 'xyzblurgh'." | false | No |
 | 3 | Wikipedia | "Flurbnozzle_xyznonexistent" | "No Wikipedia article found for 'Flurbnozzle...'" | false | No |
-| 4 | (unknown app) | "totally_fake_app" | "Unknown app_id" | false | No |
 
 All failure cases:
 - Returned structured error responses (not crashes)
