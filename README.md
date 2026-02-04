@@ -1,6 +1,6 @@
 ![Axiomeer](Test%20Images/Banner.png)
 
-# Axiomeer (v2)
+# Axiomeer (v3)
 
 ### The Marketplace for AI Agents
 
@@ -10,7 +10,7 @@ Think of it as an **App Store for AI**. Anyone can publish a product (a dataset,
 
 This is not another tool-calling framework. This is **infrastructure for an AI-to-AI economy** where agents autonomously find and consume the right resources, and every transaction is verified.
 
-> **Status: v2** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v2 ships with **7 real providers** (weather, Wikipedia, country data, exchange rates, dictionary, book search, math facts) -- all free, no API keys. The execute pipeline now forwards query inputs to providers. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
+> **Status: v3** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v3 ships with **7 real providers** (weather, Wikipedia, country data, exchange rates, dictionary, book search, math facts) -- all free, no API keys. The marketplace now uses an **LLM sales agent** to choose the best product and explain the recommendation. Capabilities are inferred by the LLM only (no keyword heuristics), and the client uses the sales agent’s feedback to respond to users. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
 
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
@@ -169,7 +169,7 @@ User / LLM Client
 | Database | SQLite + SQLAlchemy 2.0 | App catalog and run receipts |
 | Data Validation | Pydantic v2 | Request/response schemas |
 | CLI | Typer + Rich | Terminal interface with formatted output |
-| LLM Integration | Ollama (llama2:7b) | Capability extraction and answer generation |
+| LLM Integration | Ollama (qwen2.5:14b-instruct) | Capability extraction and answer generation |
 | HTTP Client | Requests | Provider execution |
 | Language | Python 3.10+ | Runtime |
 
@@ -242,7 +242,7 @@ Before setting up the project, ensure you have the following installed:
    ```bash
    # Install Ollama: https://ollama.ai
    # Then pull the required model:
-   ollama pull llama2:7b
+   ollama pull qwen2.5:14b-instruct
    ```
    > Ollama is optional if you only use manual capability tags (skip `--auto-caps`). It is required for the client LLM simulation and auto-capability inference.
 
@@ -424,7 +424,7 @@ python -m marketplace.client_llm "What is the weather in Indianapolis right now?
 5. If **HIGH**: generate a grounded answer constrained to provided evidence
 6. If **LOW**: abstain deterministically (no hallucination)
 
-> Requires Ollama running with `llama2:7b` pulled.
+> Requires Ollama running with `qwen2.5:14b-instruct` pulled.
 
 ---
 
@@ -546,8 +546,8 @@ cp .env.example .env
 | `API_BASE_URL` | `http://127.0.0.1:8000` | API server URL (used by CLI and client) |
 | `OLLAMA_URL` | `http://localhost:11434/api/generate` | Ollama inference endpoint |
 | `OLLAMA_TIMEOUT` | `30` | Ollama request timeout in seconds |
-| `ROUTER_MODEL` | `llama2:7b` | Model for capability extraction |
-| `ANSWER_MODEL` | `llama2:7b` | Model for grounded answer generation |
+| `ROUTER_MODEL` | `qwen2.5:14b-instruct` | Model for capability extraction |
+| `ANSWER_MODEL` | `qwen2.5:14b-instruct` | Model for grounded answer generation |
 | `W_CAP` | `0.70` | Router weight: capability match |
 | `W_LAT` | `0.20` | Router weight: latency |
 | `W_COST` | `0.10` | Router weight: cost |
@@ -581,7 +581,13 @@ $ python -m marketplace.cli apps
 ┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ id                     ┃ name                      ┃ freshness ┃ citations ┃ caps                       ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ dictionary             │ English Dictionary        │ static    │ yes       │ search,docs,citations      │
+│ exchange_rates         │ Exchange Rate Lookup      │ realtime  │ yes       │ finance,realtime,citations │
+│ numbers_math           │ Numbers & Math Facts      │ static    │ yes       │ math,docs                  │
+│ open_library           │ Open Library Book Search  │ daily     │ yes       │ search,docs,citations      │
 │ realtime_weather_agent │ Realtime Weather Agent v2 │ realtime  │ yes       │ weather,realtime,citations │
+│ rest_countries         │ REST Countries Search     │ daily     │ yes       │ search,docs,citations      │
+│ wikipedia_search       │ Wikipedia Summary Search  │ daily     │ yes       │ search,docs,citations      │
 └────────────────────────┴───────────────────────────┴───────────┴───────────┴────────────────────────────┘
 ```
 
@@ -602,17 +608,18 @@ Ranked apps by capability match (primary), then latency, then cost.
 ┃ # ┃ app_id                 ┃ name                      ┃ score ┃
 ┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
 │ 1 │ realtime_weather_agent │ Realtime Weather Agent v2 │ 0.877 │
+│ 2 │ exchange_rates         │ Exchange Rate Lookup      │   0.9 │
 └───┴────────────────────────┴───────────────────────────┴───────┘
 
 Top pick: Realtime Weather Agent v2 (realtime_weather_agent)
- - Capability match: 1.00 (covers ['citations', 'realtime', 'weather'])
+ - No required_capabilities specified; not penalized on capability coverage.
  - Freshness matches requirement: realtime
  - Supports citations/provenance: yes
  - Estimated latency: 800ms
  - Estimated cost: $0.0000
 ```
 
-**What happened:** The LLM inferred `['realtime', 'weather', 'citations']` from the query. The router scored the weather agent at 0.877 (1.00 capability match, penalized slightly on latency).
+**What happened:** The LLM inferred `['realtime', 'weather', 'citations']`. The sales agent selected the weather provider and returned the recommendation rationale.
 
 ### Step 5: Shop + Execute the top pick
 
@@ -625,27 +632,22 @@ $ python -m marketplace.cli shop \
 
 ...
 Execution result:
-ok=True
-Provenance:
-{
-    'sources': ['https://open-meteo.com/'],
-    'retrieved_at': '2026-02-02T15:14:22.989416+00:00',
-    'notes': []
-}
+ok=False
+Validation errors:
+ - Citations required but missing or invalid. Expected non-empty list field: citations: .
 Output:
 {
-    'answer': 'At 2026-02-02T15:00, temperature is -2.7 C, weather_code=3,
-              wind_speed=15.3 km/h (Open-Meteo).',
-    'citations': ['https://open-meteo.com/'],
-    'retrieved_at': '2026-02-02T15:14:22.989416+00:00',
+    'answer': 'Missing required parameters: lat and lon.',
+    'citations': [],
+    'retrieved_at': '2026-02-04T15:01:56.470184+00:00',
     'quality': 'verified'
 }
 ```
 
 **What happened:**
 1. The marketplace called the Open-Meteo provider via `executor_url`
-2. Output validation passed: `citations` is a non-empty list, `retrieved_at` is present
-3. `ok=True` -- execution succeeded
+2. Output validation failed because required inputs were missing
+3. `ok=False` -- execution failed
 4. A receipt was logged to the `runs` table
 
 ### Step 6: Check execution receipts
@@ -681,7 +683,7 @@ $ python -m marketplace.client_llm \
 │ What is the weather in Indianapolis right now? Cite sources.       │
 │                                                                    │
 │ Inferred caps                                                      │
-│ ['weather', 'realtime', 'citations', 'search']                     │
+│ ['weather', 'realtime', 'citations']                               │
 ╰────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -695,20 +697,34 @@ The LLM extracted capability tags from the natural language question.
 │     {                                                              │
 │       "app_id": "realtime_weather_agent",                          │
 │       "name": "Realtime Weather Agent v2",                         │
-│       "score": 0.702,                                              │
+│       "score": 0.877,                                              │
 │       "why": [                                                     │
-│         "Capability match: 0.75 (covers ['citations', 'realtime', │
-│          'weather'])",                                              │
-│         "Missing: ['search']",                                     │
+│         "No required_capabilities specified; not penalized on     │
+│ capability coverage.",                                             │
 │         "Freshness matches requirement: realtime",                 │
 │         "Supports citations/provenance: yes",                      │
-│         "Estimated latency: 800ms"                                 │
+│         "Estimated latency: 800ms",                                │
+│         "Estimated cost: $0.0000"                                  │
+│       ]                                                            │
+│     },                                                             │
+│     {                                                              │
+│       "app_id": "exchange_rates",                                  │
+│       "name": "Exchange Rate Lookup",                              │
+│       "score": 0.9,                                                │
+│       "why": [                                                     │
+│         "No required_capabilities specified; not penalized on     │
+│ capability coverage.",                                             │
+│         "Freshness matches requirement: realtime",                 │
+│         "Supports citations/provenance: yes",                      │
+│         "Estimated latency: 500ms",                                │
+│         "Estimated cost: $0.0000"                                  │
 │       ]                                                            │
 │     }                                                              │
 │   ],                                                               │
 │   "explanation": [                                                 │
-│     "Ranked apps by capability match (primary), then latency,     │
-│      then cost."                                                   │
+│     "The Realtime Weather Agent v2 is the best fit for the task as │
+│ it has the required capabilities of weather information, real-    │
+│ time data, and citation support."                                  │
 │   ]                                                                │
 │ }                                                                  │
 ╰────────────────────────────────────────────────────────────────────╯
@@ -722,15 +738,15 @@ The router ranked the weather agent. Score is 0.702 (75% capability match -- cov
 │   "app_id": "realtime_weather_agent",                              │
 │   "ok": true,                                                      │
 │   "output": {                                                      │
-│     "answer": "At 2026-02-02T15:00, temperature is -2.7 C,        │
-│       weather_code=3, wind_speed=15.3 km/h (Open-Meteo).",        │
+│     "answer": "At 2026-02-04T10:00, temperature is -5.0 C,        │
+│       weather_code=1, wind_speed=11.5 km/h (Open-Meteo).",        │
 │     "citations": ["https://open-meteo.com/"],                      │
-│     "retrieved_at": "2026-02-02T15:14:46.460875+00:00",            │
+│     "retrieved_at": "2026-02-04T15:02:09.533216+00:00",            │
 │     "quality": "verified"                                          │
 │   },                                                               │
 │   "provenance": {                                                  │
 │     "sources": ["https://open-meteo.com/"],                        │
-│     "retrieved_at": "2026-02-02T15:14:46.460875+00:00",            │
+│     "retrieved_at": "2026-02-04T15:02:09.533216+00:00",            │
 │     "notes": []                                                    │
 │   },                                                               │
 │   "validation_errors": []                                          │
@@ -755,9 +771,9 @@ Evidence quality is **HIGH** (non-mock, has citations). The LLM proceeds to gene
 
 ```
 ╭──────────────────── Final Answer (Grounded) ───────────────────────╮
-│ According to the provided evidence, the weather in Indianapolis    │
-│ right now is -2.7 degrees Celsius with a wind speed of 15.3 km/h. │
-│ This information was retrieved from Open-Meteo on February 2nd,    │
+│ According to Open-Meteo, the temperature in Indianapolis at 10:00 │
+│ on February 4, 2026, was -5.0 C with a weather code of 1 and wind │
+│ speed of 11.5 km/h.                                               │
 │ 2026 at 15:14:46 UTC and has been verified. Therefore, the current │
 │ weather in Indianapolis is cold and windy. (Open-Meteo, 2026)      │
 ╰────────────────────────────────────────────────────────────────────╯
@@ -830,6 +846,15 @@ If citations are required but the provider does not return them, the execution i
 - [ ] **Trust scores per provider** -- Track failure rate, latency percentiles, and citation compliance over time. Use scores to improve routing.
 - [ ] **Authentication and API keys** -- Add API key gating so third-party providers can register securely.
 - [ ] **Manifest validation** -- JSON schema + allowlist enforcement for provider registration.
+
+---
+
+## v3 Changes
+
+- **LLM Sales Agent** now selects the best product and provides the recommendation rationale.
+- **LLM-only capability inference** (no keyword heuristics).
+- **Client answers use sales-agent feedback**, with grounded responses on no-match cases.
+- **Provider set remains 7 free sources** (no paid APIs).
 ---
 
 ## Contributing
@@ -839,7 +864,7 @@ Contributions are welcome. Here is how to get started:
 ### 1. Fork and clone
 
 ```bash
-git clone https://github.com/<your-username>/axiomeer.git
+git clone https://github.com/ujjwalredd/axiomeer.git
 cd axiomeer
 ```
 

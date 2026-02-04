@@ -13,11 +13,15 @@ from marketplace.core.models import (
     AppCreate, AppOut,
     ExecuteRequest, ExecuteResponse, Provenance,
     RunOut,
+    MessageIn, MessageOut,
 )
 from marketplace.core.router import recommend
 from marketplace.core.validate import validate_output
+from marketplace.llm.sales_agent import sales_recommendation, sales_no_match, SalesAgentError
+from marketplace.settings import MEMORY_MAX_MESSAGES, EXECUTOR_TIMEOUT
 from marketplace.storage.db import Base, engine, SessionLocal
 from marketplace.storage.models import AppListing
+from marketplace.storage.messages import ConversationMessage
 from marketplace.storage.runs import Run
 
 @asynccontextmanager
@@ -52,6 +56,31 @@ def _row_to_app_out(r: AppListing) -> AppOut:
         executor_type=r.executor_type,
         executor_url=r.executor_url,
     )
+
+def _history_for_client(db: Session, client_id: str, limit: int) -> list[dict]:
+    rows = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.client_id == client_id)
+        .order_by(ConversationMessage.id.desc())
+        .limit(limit)
+        .all()
+    )
+    # Return oldest -> newest for readability
+    rows.reverse()
+    return [
+        {"role": r.role, "content": r.content, "created_at": r.created_at}
+        for r in rows
+    ]
+
+def _log_message(db: Session, client_id: str, role: str, content: str):
+    msg = ConversationMessage(
+        client_id=client_id,
+        role=role,
+        content=content,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    db.add(msg)
+    db.commit()
 
 
 # ---- Health ----
@@ -130,6 +159,10 @@ def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db)):
 
 @app.post("/shop", response_model=ShopResponse)
 def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
+    history = []
+    if req.client_id:
+        history = _history_for_client(db, req.client_id, MEMORY_MAX_MESSAGES)
+
     rows = db.query(AppListing).all()
     apps = []
     for r in rows:
@@ -144,12 +177,67 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
             "cost_est_usd": r.cost_est_usd,
         })
 
-    recs, explanation = recommend(req, apps, k=3)
+    # Let the sales agent infer domain; do not enforce required_capabilities here.
+    req_for_rank = req.model_copy(update={"required_capabilities": []})
+    recs, _ = recommend(req_for_rank, apps, k=len(apps))
+    if not recs:
+        try:
+            sales = sales_no_match(
+                task=req.task,
+                constraints=req.constraints.model_dump(),
+                history=history,
+            )
+        except SalesAgentError as e:
+            raise HTTPException(status_code=503, detail={"code": str(e)})
+        if req.client_id:
+            _log_message(db, req.client_id, "client", req.task)
+            _log_message(db, req.client_id, "sales_agent", sales["message"])
+        return ShopResponse(status="NO_MATCH", recommendations=[], explanation=[sales["message"]])
+
+    app_lookup = {a["id"]: a for a in apps}
+    candidates = []
+    for r in recs:
+        a = app_lookup.get(r.app_id, {})
+        candidates.append({
+            "app_id": r.app_id,
+            "name": r.name,
+            "score": r.score,
+            "why": r.why,
+            "capabilities": a.get("capabilities", []),
+            "freshness": a.get("freshness"),
+            "citations_supported": a.get("citations_supported"),
+            "latency_est_ms": a.get("latency_est_ms"),
+            "cost_est_usd": a.get("cost_est_usd"),
+        })
+
+    try:
+        sales = sales_recommendation(
+            task=req.task,
+            constraints=req.constraints.model_dump(),
+            candidates=candidates,
+            requested_caps=req.required_capabilities,
+            history=history,
+        )
+    except SalesAgentError as e:
+        raise HTTPException(status_code=503, detail={"code": str(e)})
+
+    if sales["app_id"] == "NO_MATCH":
+        if req.client_id:
+            _log_message(db, req.client_id, "client", req.task)
+            _log_message(db, req.client_id, "sales_agent", sales["rationale"])
+        return ShopResponse(status="NO_MATCH", recommendations=[], explanation=[sales["rationale"]])
+
+    chosen_id = sales["app_id"]
+    recs_sorted = sorted(recs, key=lambda r: 0 if r.app_id == chosen_id else 1)
+
+    if req.client_id:
+        _log_message(db, req.client_id, "client", req.task)
+        _log_message(db, req.client_id, "sales_agent", sales["rationale"])
 
     return ShopResponse(
-        status="OK" if recs else "NO_MATCH",
-        recommendations=recs,
-        explanation=explanation,
+        status="OK",
+        recommendations=recs_sorted,
+        explanation=[sales["rationale"]],
     )
 
 
@@ -170,6 +258,7 @@ def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteRespon
         run = Run(
             app_id=req.app_id,
             task=req.task,
+            client_id=req.client_id,
             require_citations=require_citations,
             ok=ok,
             output_json=json.dumps(payload) if payload is not None else None,
@@ -199,7 +288,7 @@ def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteRespon
         return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors)
 
     try:
-        r = requests.get(app_row.executor_url, params=req.inputs, timeout=10)
+        r = requests.get(app_row.executor_url, params=req.inputs, timeout=EXECUTOR_TIMEOUT)
         r.raise_for_status()
         payload = r.json()
     except Exception as e:
@@ -223,6 +312,8 @@ def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteRespon
 
     ok = True
     log_run()
+    if req.client_id and isinstance(payload, dict):
+        _log_message(db, req.client_id, "provider", json.dumps(payload, ensure_ascii=True))
     return ExecuteResponse(app_id=req.app_id, ok=True, output=payload, provenance=prov, validation_errors=[])
 
 
@@ -241,6 +332,52 @@ def list_runs(db: Session = Depends(get_db)):
             latency_ms=r.latency_ms,
             created_at=r.created_at,
             validation_errors=json.loads(r.validation_errors_json or "[]"),
+            client_id=r.client_id,
+        )
+        for r in rows
+    ]
+
+
+# ---- Conversation Memory ----
+
+@app.post("/messages", response_model=MessageOut)
+def create_message(msg: MessageIn, db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc).isoformat()
+    row = ConversationMessage(
+        client_id=msg.client_id,
+        role=msg.role,
+        content=msg.content,
+        created_at=now,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return MessageOut(
+        id=row.id,
+        client_id=row.client_id,
+        role=row.role,
+        content=row.content,
+        created_at=row.created_at,
+    )
+
+
+@app.get("/history", response_model=list[MessageOut])
+def get_history(client_id: str, limit: int = MEMORY_MAX_MESSAGES, db: Session = Depends(get_db)):
+    rows = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.client_id == client_id)
+        .order_by(ConversationMessage.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return [
+        MessageOut(
+            id=r.id,
+            client_id=r.client_id,
+            role=r.role,
+            content=r.content,
+            created_at=r.created_at,
         )
         for r in rows
     ]
@@ -249,18 +386,31 @@ def list_runs(db: Session = Depends(get_db)):
 # ---- Providers ----
 
 @app.get("/providers/openmeteo_weather")
-def provider_openmeteo_weather(lat: float = 39.7684, lon: float = -86.1581):
-    """Default lat/lon is Indianapolis."""
+def provider_openmeteo_weather(
+    lat: float | None = None,
+    lon: float | None = None,
+    timezone_name: str | None = None,
+):
     now = datetime.now(timezone.utc).isoformat()
+    if lat is None or lon is None:
+        return {
+            "answer": "Missing required parameters: lat and lon.",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+    if not timezone_name:
+        timezone_name = "UTC"
 
-    url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lat}&longitude={lon}"
-        "&current=temperature_2m,weather_code,wind_speed_10m"
-        "&timezone=UTC"
-    )
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current": "temperature_2m,weather_code,wind_speed_10m",
+        "timezone": timezone_name,
+    }
 
-    r = requests.get(url, timeout=10)
+    r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
     data = r.json()
 
@@ -278,7 +428,7 @@ def provider_openmeteo_weather(lat: float = 39.7684, lon: float = -86.1581):
 
 
 @app.get("/providers/wikipedia")
-def provider_wikipedia(q: str = "Python_(programming_language)"):
+def provider_wikipedia(q: str | None = None):
     """Wikipedia summary provider. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 
@@ -317,7 +467,7 @@ def provider_wikipedia(q: str = "Python_(programming_language)"):
 
 
 @app.get("/providers/restcountries")
-def provider_restcountries(q: str = "United States"):
+def provider_restcountries(q: str | None = None):
     """REST Countries provider. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 
@@ -363,7 +513,7 @@ def provider_restcountries(q: str = "United States"):
 
 
 @app.get("/providers/exchangerate")
-def provider_exchangerate(base: str = "USD"):
+def provider_exchangerate(base: str | None = None, target: str | None = None):
     """Exchange rate provider. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 
@@ -376,6 +526,7 @@ def provider_exchangerate(base: str = "USD"):
         }
 
     base = base.strip().upper()
+    target = target.strip().upper() if isinstance(target, str) and target.strip() else None
     url = f"https://open.er-api.com/v6/latest/{base}"
     try:
         r = requests.get(url, timeout=10)
@@ -389,8 +540,14 @@ def provider_exchangerate(base: str = "USD"):
                 "quality": "verified",
             }
         rates = data.get("rates", {})
-        majors = ["EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "INR", "CNY"]
-        rate_strs = [f"{c}: {rates[c]}" for c in majors if c in rates and c != base]
+        if target:
+            if target in rates and target != base:
+                rate_strs = [f"{target}: {rates[target]}"]
+            else:
+                rate_strs = []
+        else:
+            symbols = sorted([c for c in rates.keys() if c != base])
+            rate_strs = [f"{c}: {rates[c]}" for c in symbols[:10]]
         return {
             "answer": f"Exchange rates for 1 {base}: {', '.join(rate_strs[:6])}. Last updated: {data.get('time_last_update_utc', 'N/A')}.",
             "citations": [f"https://open.er-api.com/v6/latest/{base}"],
@@ -407,7 +564,7 @@ def provider_exchangerate(base: str = "USD"):
 
 
 @app.get("/providers/dictionary")
-def provider_dictionary(word: str = "hello"):
+def provider_dictionary(word: str | None = None):
     """Free Dictionary API provider. No API key."""
     now = datetime.now(timezone.utc).isoformat()
 
@@ -455,7 +612,7 @@ def provider_dictionary(word: str = "hello"):
 
 
 @app.get("/providers/openlibrary")
-def provider_openlibrary(q: str = "python programming"):
+def provider_openlibrary(q: str | None = None):
     """Open Library book search. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 
@@ -505,7 +662,7 @@ def provider_openlibrary(q: str = "python programming"):
 
 
 @app.get("/providers/numbersapi")
-def provider_numbersapi(number: str = "42"):
+def provider_numbersapi(number: str | None = None):
     """Numbers API -- math facts. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 

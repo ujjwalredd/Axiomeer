@@ -9,6 +9,7 @@ class Run(Base):
 
     app_id: Mapped[str] = mapped_column(String, nullable=False)
     task: Mapped[str] = mapped_column(Text, nullable=False)
+    client_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     require_citations: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

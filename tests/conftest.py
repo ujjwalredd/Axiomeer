@@ -6,3 +6,22 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_marketplace.db"
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks tests that require network access")
+
+
+def _mock_sales_recommendation(task, constraints, candidates, requested_caps=None, history=None):
+    # Deterministic choice for tests
+    return {
+        "app_id": candidates[0]["app_id"],
+        "rationale": "test rationale",
+    }
+
+
+def _mock_sales_no_match(task, constraints, history=None):
+    return {"message": "test no match"}
+
+
+def pytest_sessionstart(session):
+    # Avoid Ollama dependency in API tests by mocking sales agent
+    import apps.api.main as api_main
+    api_main.sales_recommendation = _mock_sales_recommendation
+    api_main.sales_no_match = _mock_sales_no_match

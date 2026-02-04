@@ -17,6 +17,7 @@ class ShopRequest(BaseModel):
     task: str = Field(min_length=1, max_length=2000)
     required_capabilities: List[str] = Field(default_factory=list)
     constraints: Constraints = Field(default_factory=Constraints)
+    client_id: Optional[str] = Field(default=None, max_length=200)
 
 
 class Recommendation(BaseModel):
@@ -56,6 +57,7 @@ class ExecuteRequest(BaseModel):
     inputs: dict = Field(default_factory=dict)
 
     require_citations: bool = True
+    client_id: Optional[str] = Field(default=None, max_length=200)
 
 class Provenance(BaseModel):
     sources: List[str] = Field(default_factory=list)
@@ -78,3 +80,16 @@ class RunOut(BaseModel):
     latency_ms: int
     created_at: str
     validation_errors: list[str]
+    client_id: Optional[str] = None
+
+class MessageIn(BaseModel):
+    client_id: str = Field(min_length=1, max_length=200)
+    role: str = Field(min_length=1, max_length=50)
+    content: str = Field(min_length=1, max_length=4000)
+
+class MessageOut(BaseModel):
+    id: int
+    client_id: str
+    role: str
+    content: str
+    created_at: str

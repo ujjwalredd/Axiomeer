@@ -136,17 +136,15 @@ class TestRecommend:
         recs, _ = recommend(req, SAMPLE_APPS, k=3)
         assert all(r.app_id != "finance_rt" for r in recs)
 
-    def test_no_match_returns_partial_with_zero_cap_score(self):
-        """Router allows partial matches but scores them low when no capabilities match."""
+    def test_no_match_returns_empty(self):
+        """Router requires full capability coverage when required_capabilities is set."""
         req = ShopRequest(
             task="Translate text",
             required_capabilities=["translate"],
             constraints=Constraints(freshness="realtime", citations_required=True),
         )
         recs, reasons = recommend(req, SAMPLE_APPS, k=3)
-        # Apps pass hard filters but have 0.0 capability match
-        for r in recs:
-            assert r.score < 0.5
+        assert recs == []
 
     def test_top_k_limit(self):
         req = ShopRequest(

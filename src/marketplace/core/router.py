@@ -76,15 +76,14 @@ def recommend(
         if constraints.max_cost_usd is not None and a["cost_est_usd"] > constraints.max_cost_usd:
             continue
 
-        # required capabilities: we allow partial matches but score them lower
+        # required capabilities: enforce full coverage when specified
+        if required_caps and not required_caps.issubset(app_caps):
+            continue
+
         filtered.append((a, app_caps))
 
     if not filtered:
-        reasons = [
-            "No apps satisfied the hard constraints (freshness/citations/budget/latency).",
-            "Try relaxing constraints or adding more apps to the catalog.",
-        ]
-        return [], reasons
+        return [], []
 
     # ---- Score and rank ----
     scored: List[tuple[float, dict, list[str]]] = []
@@ -120,4 +119,4 @@ def recommend(
         Recommendation(app_id=a["id"], name=a["name"], score=round(score, 3), why=why[:5])
         for score, a, why in top
     ]
-    return recs, ["Ranked apps by capability match (primary), then latency, then cost."]
+    return recs, []
