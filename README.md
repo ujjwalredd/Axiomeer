@@ -699,7 +699,7 @@ The LLM extracted capability tags from the natural language question.
 │       "name": "Realtime Weather Agent v2",                         │
 │       "score": 0.877,                                              │
 │       "why": [                                                     │
-│         "No required_capabilities specified; not penalized on     │
+│         "No required_capabilities specified; not penalized on      │
 │ capability coverage.",                                             │
 │         "Freshness matches requirement: realtime",                 │
 │         "Supports citations/provenance: yes",                      │
@@ -712,7 +712,7 @@ The LLM extracted capability tags from the natural language question.
 │       "name": "Exchange Rate Lookup",                              │
 │       "score": 0.9,                                                │
 │       "why": [                                                     │
-│         "No required_capabilities specified; not penalized on     │
+│         "No required_capabilities specified; not penalized on      │
 │ capability coverage.",                                             │
 │         "Freshness matches requirement: realtime",                 │
 │         "Supports citations/provenance: yes",                      │
@@ -723,7 +723,7 @@ The LLM extracted capability tags from the natural language question.
 │   ],                                                               │
 │   "explanation": [                                                 │
 │     "The Realtime Weather Agent v2 is the best fit for the task as │
-│ it has the required capabilities of weather information, real-    │
+│ it has the required capabilities of weather information, real-     │
 │ time data, and citation support."                                  │
 │   ]                                                                │
 │ }                                                                  │
@@ -738,8 +738,8 @@ The router ranked the weather agent. Score is 0.702 (75% capability match -- cov
 │   "app_id": "realtime_weather_agent",                              │
 │   "ok": true,                                                      │
 │   "output": {                                                      │
-│     "answer": "At 2026-02-04T10:00, temperature is -5.0 C,        │
-│       weather_code=1, wind_speed=11.5 km/h (Open-Meteo).",        │
+│     "answer": "At 2026-02-04T10:00, temperature is -5.0 C,         │
+│       weather_code=1, wind_speed=11.5 km/h (Open-Meteo).",         │
 │     "citations": ["https://open-meteo.com/"],                      │
 │     "retrieved_at": "2026-02-04T15:02:09.533216+00:00",            │
 │     "quality": "verified"                                          │
@@ -771,9 +771,9 @@ Evidence quality is **HIGH** (non-mock, has citations). The LLM proceeds to gene
 
 ```
 ╭──────────────────── Final Answer (Grounded) ───────────────────────╮
-│ According to Open-Meteo, the temperature in Indianapolis at 10:00 │
-│ on February 4, 2026, was -5.0 C with a weather code of 1 and wind │
-│ speed of 11.5 km/h.                                               │
+│ According to Open-Meteo, the temperature in Indianapolis at 10:00  │
+│ on February 4, 2026, was -5.0 C with a weather code of 1 and wind  │
+│ speed of 11.5 km/h.                                                │
 │ 2026 at 15:14:46 UTC and has been verified. Therefore, the current │
 │ weather in Indianapolis is cold and windy. (Open-Meteo, 2026)      │
 ╰────────────────────────────────────────────────────────────────────╯
