@@ -12,6 +12,8 @@ This is not another tool-calling framework. This is **infrastructure for an AI-t
 
 > **Status: v5** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v5 ships with **8 real providers** (weather, Wikipedia summary, country data, exchange rates, dictionary, book search, Wikidata entity search, Wikipedia dumps) -- all free, no API keys. The marketplace uses an **LLM sales agent** to produce the top 3 recommendations with tradeoffs, and clients can execute the top pick (or choose manually). Capabilities are inferred by **LLM + light heuristics** (or specified manually). Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. v5 adds **sales-agent model benchmarking**, **provider/shop caching**, **relevance scoring**, and improved **capability tags** for book and population queries. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
 
+**Product guide (PDF):** [Axiomeer Product Guide (PDF)](docs/axiomeer_product_guide.pdf)
+
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
 ---
@@ -714,14 +716,19 @@ cp .env.example .env
 Performance tuning tips:
 - Use a smaller `SALES_AGENT_MODEL` to speed up the top-3 ranking step.
 - Tune cache TTLs to trade freshness for speed (realtime apps should stay low).
- - If you get frequent `NO_MATCH`, either pass explicit `--caps` or relax `MIN_CAP_COVERAGE` / `MIN_RELEVANCE_SCORE`.
+- If you get frequent `NO_MATCH`, either pass explicit `--caps` or relax `MIN_CAP_COVERAGE` / `MIN_RELEVANCE_SCORE`.
 
 ## Sales-Agent Model Timing Comparison (Local Benchmark)
 
 End-to-end timings for `python -m marketplace.cli shop ... --execute-top` on a local machine.
 Same queries, same API server, only the sales-agent model changed.
 
-| Query | Small Model (s) | Large Model (s) | Delta (Large - Small) |
+**Small (current):** `phi3.5:3.8b`  
+**Large (previous):** `qwen2.5:14b-instruct`  
+Benchmarks below were collected on CPU.
+With GPU infrastructure, you can upgrade to larger models and often improve both accuracy and response time (depending on model size and hardware).
+
+| Query | Small Model (phi3.5:3.8b) | Large Model (qwen2.5:14b) | Delta (Large - Small) |
 |---|---:|---:|---:|
 | Weather Indianapolis | 18.15 | 22.70 | +4.55 |
 | USD to EUR | 19.19 | 44.98 | +25.79 |
