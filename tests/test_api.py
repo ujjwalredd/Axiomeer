@@ -197,13 +197,6 @@ class TestProvidersEndpoints:
         assert "answer" in data
         assert "citations" in data
 
-    @pytest.mark.integration
-    def test_numbersapi_provider(self, client):
-        r = client.get("/providers/numbersapi?number=42")
-        assert r.status_code == 200
-        data = r.json()
-        assert "answer" in data
-
     def test_wikipedia_empty_query(self, client):
         r = client.get("/providers/wikipedia?q=")
         assert r.status_code == 200
@@ -234,12 +227,6 @@ class TestProvidersEndpoints:
         data = r.json()
         assert "No search query provided" in data["answer"]
 
-    def test_numbersapi_empty_query(self, client):
-        r = client.get("/providers/numbersapi?number=")
-        assert r.status_code == 200
-        data = r.json()
-        assert "No number provided" in data["answer"]
-
 
 class TestAutoBootstrap:
     def test_manifests_loaded_on_startup(self, client):
@@ -254,7 +241,6 @@ class TestAutoBootstrap:
         assert "exchange_rates" in app_ids
         assert "dictionary" in app_ids
         assert "open_library" in app_ids
-        assert "numbers_math" in app_ids
 
 
 class TestRunsEndpoint:

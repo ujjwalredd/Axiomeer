@@ -9,7 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from marketplace.core.models import (
-    ShopRequest, ShopResponse,
+    ShopRequest, ShopResponse, SalesAgentMessage, SalesAgentRecommendation,
     AppCreate, AppOut,
     ExecuteRequest, ExecuteResponse, Provenance,
     RunOut,
@@ -192,7 +192,16 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
         if req.client_id:
             _log_message(db, req.client_id, "client", req.task)
             _log_message(db, req.client_id, "sales_agent", sales["message"])
-        return ShopResponse(status="NO_MATCH", recommendations=[], explanation=[sales["message"]])
+        return ShopResponse(
+            status="NO_MATCH",
+            recommendations=[],
+            explanation=[sales["message"]],
+            sales_agent=SalesAgentMessage(
+                summary=sales["message"],
+                final_choice="NO_MATCH",
+                recommendations=[],
+            ),
+        )
 
     app_lookup = {a["id"]: a for a in apps}
     candidates = []
@@ -202,7 +211,6 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
             "app_id": r.app_id,
             "name": r.name,
             "score": r.score,
-            "why": r.why,
             "capabilities": a.get("capabilities", []),
             "freshness": a.get("freshness"),
             "citations_supported": a.get("citations_supported"),
@@ -221,23 +229,78 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
     except SalesAgentError as e:
         raise HTTPException(status_code=503, detail={"code": str(e)})
 
-    if sales["app_id"] == "NO_MATCH":
+    if sales["final_choice"] == "NO_MATCH":
         if req.client_id:
             _log_message(db, req.client_id, "client", req.task)
-            _log_message(db, req.client_id, "sales_agent", sales["rationale"])
-        return ShopResponse(status="NO_MATCH", recommendations=[], explanation=[sales["rationale"]])
+            _log_message(db, req.client_id, "sales_agent", sales["summary"])
+        return ShopResponse(
+            status="NO_MATCH",
+            recommendations=[],
+            explanation=[sales["summary"]],
+            sales_agent=SalesAgentMessage(
+                summary=sales["summary"],
+                final_choice="NO_MATCH",
+                recommendations=[],
+            ),
+        )
 
-    chosen_id = sales["app_id"]
-    recs_sorted = sorted(recs, key=lambda r: 0 if r.app_id == chosen_id else 1)
+    chosen_id = sales["final_choice"]
+    sales_recs = sales["recommendations"]
+    sales_order = {r["app_id"]: i for i, r in enumerate(sales_recs)}
+    sales_details = {r["app_id"]: r for r in sales_recs}
+
+    recs_enriched: list[Recommendation] = []
+    for r in recs:
+        if r.app_id in sales_details:
+            details = sales_details[r.app_id]
+            r = r.model_copy(update={
+                "rationale": details.get("rationale"),
+                "tradeoff": details.get("tradeoff"),
+            })
+        if not r.rationale or not r.tradeoff:
+            rationale_bits: list[str] = []
+            tradeoff_bits: list[str] = []
+            for line in r.why:
+                if line.startswith("Capability match") or line.startswith("Freshness matches") or line.startswith("Supports citations"):
+                    rationale_bits.append(line)
+                if line.startswith("Estimated latency") or line.startswith("Estimated cost"):
+                    tradeoff_bits.append(line)
+            update_fields: dict[str, str | None] = {}
+            if not r.rationale and rationale_bits:
+                update_fields["rationale"] = "; ".join(rationale_bits)
+            if not r.tradeoff and tradeoff_bits:
+                update_fields["tradeoff"] = "; ".join(tradeoff_bits)
+            if update_fields:
+                r = r.model_copy(update=update_fields)
+        recs_enriched.append(r)
+
+    recs_sorted = sorted(
+        recs_enriched,
+        key=lambda r: (0, sales_order[r.app_id]) if r.app_id in sales_order else (1, 0),
+    )
 
     if req.client_id:
         _log_message(db, req.client_id, "client", req.task)
-        _log_message(db, req.client_id, "sales_agent", sales["rationale"])
+        _log_message(db, req.client_id, "sales_agent", f"Final choice: {chosen_id}. {sales['summary']}")
+
+    sales_agent_msg = SalesAgentMessage(
+        summary=sales["summary"],
+        final_choice=chosen_id,
+        recommendations=[
+            SalesAgentRecommendation(
+                app_id=r["app_id"],
+                rationale=r["rationale"],
+                tradeoff=r["tradeoff"],
+            )
+            for r in sales["recommendations"]
+        ],
+    )
 
     return ShopResponse(
         status="OK",
         recommendations=recs_sorted,
-        explanation=[sales["rationale"]],
+        explanation=[sales["summary"]],
+        sales_agent=sales_agent_msg,
     )
 
 
@@ -661,39 +724,83 @@ def provider_openlibrary(q: str | None = None):
         }
 
 
-@app.get("/providers/numbersapi")
-def provider_numbersapi(number: str | None = None):
-    """Numbers API -- math facts. Free, no API key."""
+@app.get("/providers/wikidata")
+def provider_wikidata(q: str | None = None, limit: int = 3):
+    """Wikidata entity search. Free, no API key."""
     now = datetime.now(timezone.utc).isoformat()
 
-    if not number or not number.strip():
+    if not q or not q.strip():
         return {
-            "answer": "No number provided.",
+            "answer": "No search query provided.",
             "citations": [],
             "retrieved_at": now,
             "quality": "verified",
         }
 
-    number = number.strip()
-    url = f"http://numbersapi.com/{number}/math"
+    params = {
+        "action": "wbsearchentities",
+        "search": q.strip(),
+        "language": "en",
+        "format": "json",
+        "limit": max(1, min(int(limit), 5)),
+    }
     try:
-        r = requests.get(url, params={"json": ""}, timeout=10)
+        r = requests.get("https://www.wikidata.org/w/api.php", params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
-        text = data.get("text", f"No fact found for {number}.")
+        results = data.get("search", [])
+        if not results:
+            return {
+                "answer": f"No Wikidata entities found for '{q}'.",
+                "citations": [],
+                "retrieved_at": now,
+                "quality": "verified",
+            }
+        lines = []
+        citations = []
+        for item in results[:3]:
+            label = item.get("label", "Unknown")
+            desc = item.get("description", "")
+            url = item.get("url", "")
+            lines.append(f"{label} — {desc}".strip(" —"))
+            if url:
+                citations.append(url)
         return {
-            "answer": text,
-            "citations": [f"http://numbersapi.com/{number}"],
+            "answer": f"Wikidata results for '{q}': " + "; ".join(lines) + ".",
+            "citations": citations,
             "retrieved_at": now,
             "quality": "verified",
         }
     except Exception as e:
         return {
-            "answer": f"Error fetching number fact: {e}",
+            "answer": f"Error fetching Wikidata data: {e}",
             "citations": [],
             "retrieved_at": now,
             "quality": "verified",
         }
+
+
+@app.get("/providers/wikipedia_dumps")
+def provider_wikipedia_dumps(lang: str | None = None):
+    """Wikipedia dumps locator. Returns latest pages-articles dump URL."""
+    now = datetime.now(timezone.utc).isoformat()
+
+    if not lang or not lang.strip():
+        return {
+            "answer": "No language code provided (e.g., en, es, fr).",
+            "citations": [],
+            "retrieved_at": now,
+            "quality": "verified",
+        }
+
+    lang = lang.strip().lower()
+    dump_url = f"https://dumps.wikimedia.org/{lang}wiki/latest/{lang}wiki-latest-pages-articles.xml.bz2"
+    return {
+        "answer": f"Latest Wikipedia dump for '{lang}': {dump_url}",
+        "citations": [dump_url, "https://dumps.wikimedia.org/legal.html"],
+        "retrieved_at": now,
+        "quality": "verified",
+    }
 
 
 # ---- Auto-Bootstrap ----

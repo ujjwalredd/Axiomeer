@@ -15,7 +15,13 @@ app = typer.Typer(add_completion=False)
 
 def _post(path: str, payload: dict):
     r = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=30)
-    r.raise_for_status()
+    if not r.ok:
+        print(f"[red]HTTP {r.status_code} for {path}[/red]")
+        try:
+            print(r.json())
+        except Exception:
+            print(r.text)
+        r.raise_for_status()
     return r.json()
 
 def _get(path: str, params: dict | None = None):
@@ -150,6 +156,64 @@ Write a 2-4 sentence answer:"""
     # Always append citations so they are visible even if the model omits them.
     return f"{generated}\n\nSources: {cite_str}"
 
+def build_quality_gate_answer(
+    question: str,
+    evidence: dict,
+    quality: str,
+    reasons: list[str],
+    history: list[dict] | None = None,
+) -> str:
+    answer_text = evidence.get("answer", "")
+    citations = evidence.get("citations", [])
+    cite_str = ", ".join(citations) if citations else "none"
+    prompt = f"""You are an assistant that must answer using evidence only.
+If evidence quality is LOW, abstain and explain why using the QUALITY_REASONS.
+
+QUESTION: {question}
+RECENT_HISTORY: {json.dumps(history or [], ensure_ascii=True)}
+
+EVIDENCE: {answer_text}
+SOURCES: {cite_str}
+QUALITY: {quality}
+QUALITY_REASONS: {json.dumps(reasons, ensure_ascii=True)}
+
+Write a short response. If quality is LOW, abstain clearly and suggest what evidence is needed."""
+    generated = ollama_generate(ANSWER_MODEL, prompt)
+    return f"{generated}\n\nSources: {cite_str}"
+
+def choose_recommendation_llm(
+    question: str,
+    top3: list[dict],
+    sales_agent: dict | None,
+    constraints: dict,
+    history: list[dict] | None = None,
+) -> dict:
+    prompt = f"""You are the client agent. Choose the best app_id from the Top-3 recommendations.
+Return ONLY valid JSON in this schema:
+{{"app_id": "string", "reason": "string"}}
+
+QUESTION: {question}
+CONSTRAINTS: {json.dumps(constraints, ensure_ascii=True)}
+SALES_AGENT: {json.dumps(sales_agent or {}, ensure_ascii=True)}
+TOP_3: {json.dumps(top3, ensure_ascii=True)}
+RECENT_HISTORY: {json.dumps(history or [], ensure_ascii=True)}
+"""
+    raw = ollama_generate(ANSWER_MODEL, prompt, response_format="json")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        # attempt to extract JSON object if the model added extra text
+        raw = raw.strip()
+        if "{" in raw and "}" in raw:
+            raw = raw[raw.find("{") : raw.rfind("}") + 1]
+        payload = json.loads(raw)
+    app_id = payload.get("app_id")
+    reason = payload.get("reason")
+    if not isinstance(app_id, str) or not app_id.strip():
+        raise ValueError("client_choice_invalid_app_id")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("client_choice_invalid_reason")
+    return {"app_id": app_id.strip(), "reason": reason.strip()}
 
 def build_no_match_answer(question: str, sales_message: str, caps: list[str], constraints: dict, history: list[dict] | None = None) -> str:
     prompt = f"""You are an expert marketplace agent. Explain to the client why no product was recommended.
@@ -234,8 +298,25 @@ def main(
             _post("/messages", {"client_id": client_id, "role": "client_agent", "content": final})
         return
 
-    chosen = shop_res["recommendations"][0]
-    print(Panel(json.dumps(chosen, indent=2), title="Chosen recommendation (top pick)"))
+    top3 = shop_res["recommendations"][:3]
+    print(Panel(json.dumps(top3, indent=2), title="Top 3 Recommendations"))
+
+    try:
+        choice = choose_recommendation_llm(
+            question=question,
+            top3=top3,
+            sales_agent=shop_res.get("sales_agent"),
+            constraints=shop_req["constraints"],
+            history=history,
+        )
+    except Exception as e:
+        print(f"[red]Client selection failed: {e}[/red]")
+        raise typer.Exit(code=1)
+    chosen = next((r for r in top3 if r["app_id"] == choice["app_id"]), None)
+    if not chosen:
+        print("[red]Client selection returned app_id not in Top-3.[/red]")
+        raise typer.Exit(code=1)
+    print(Panel(json.dumps({"choice": choice, "picked": chosen}, indent=2), title="Chosen recommendation (client agent)"))
 
     # 3) execute chosen app to obtain evidence
     if not execute:
@@ -273,10 +354,10 @@ def main(
     if subject:
         if chosen["app_id"] in {"wikipedia_search", "rest_countries", "open_library"}:
             inputs.setdefault("q", subject)
+        elif chosen["app_id"] in {"openalex_search", "wikidata_search"}:
+            inputs.setdefault("q", subject)
         elif chosen["app_id"] == "dictionary":
             inputs.setdefault("word", subject)
-        elif chosen["app_id"] == "numbers_math":
-            inputs.setdefault("number", subject)
 
     if chosen["app_id"] == "exchange_rates":
         base, target = _extract_fx_pair(question)
@@ -316,11 +397,14 @@ def main(
     print(Panel(json.dumps({"quality": quality, "reasons": q_reasons}, indent=2), title="Evidence Quality"))
 
     if quality == "LOW":
-        print(Panel(
-            "I don't have reliable evidence to answer this accurately.\n"
-            "Here is the evidence returned (may be mock/test) and its citation(s).",
-            title="Final Answer (Abstain)"
-        ))
+        try:
+            final = build_quality_gate_answer(question, evidence, quality, q_reasons, history)
+        except OllamaConnectionError as e:
+            print(f"[red]Cannot generate answer: {e}[/red]")
+            raise typer.Exit(code=1)
+        print(Panel(final, title="Final Answer (Abstain)"))
+        if client_id:
+            _post("/messages", {"client_id": client_id, "role": "client_agent", "content": final})
         return
 
     try:

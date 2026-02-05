@@ -14,6 +14,10 @@ OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "30"))
 ROUTER_MODEL: str = os.getenv("ROUTER_MODEL", "qwen2.5:14b-instruct")
 ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "qwen2.5:14b-instruct")
+SALES_AGENT_MODEL: str = os.getenv("SALES_AGENT_MODEL", "phi3.5:3.8b")
+SALES_AGENT_MAX_TOKENS: int = int(os.getenv("SALES_AGENT_MAX_TOKENS", "120"))
+SALES_AGENT_TEMPERATURE: float = float(os.getenv("SALES_AGENT_TEMPERATURE", "0.0"))
+SALES_AGENT_TIMEOUT: int = int(os.getenv("SALES_AGENT_TIMEOUT", "12"))
 
 # Router scoring weights
 W_CAP: float = float(os.getenv("W_CAP", "0.70"))

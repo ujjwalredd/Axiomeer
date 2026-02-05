@@ -11,8 +11,15 @@ def pytest_configure(config):
 def _mock_sales_recommendation(task, constraints, candidates, requested_caps=None, history=None):
     # Deterministic choice for tests
     return {
-        "app_id": candidates[0]["app_id"],
-        "rationale": "test rationale",
+        "summary": "test summary",
+        "final_choice": candidates[0]["app_id"],
+        "recommendations": [
+            {
+                "app_id": candidates[0]["app_id"],
+                "rationale": "test rationale",
+                "tradeoff": "test tradeoff",
+            }
+        ],
     }
 
 

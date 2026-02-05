@@ -1,8 +1,18 @@
-# Axiomeer v3 -- End-to-End Test Results
+# Axiomeer v4 -- End-to-End Test Results
 
 Tested on: 2026-02-04
 Model: qwen2.5:14b-instruct (local via Ollama)
 All 7 providers auto-loaded, tests run against live external APIs where available.
+
+---
+
+## Automated Test Run (pytest)
+
+```
+71 passed in 12.93s
+```
+
+All tests passed.
 
 ---
 
@@ -65,6 +75,91 @@ Inferred caps: ['weather', 'realtime', 'citations', 'search']
 ```
 Based on the evidence, the weather in Bloomington, IN at 2026-02-04T08:45 is -8.3°C with wind speed 10.6 km/h.
 Sources: https://open-meteo.com/
+```
+
+**Result: PASS**
+
+---
+
+## Test 1B: Real Query -- Exchange Rate USD to INR (v4 client choice)
+
+**Query:** "What is the exchange rate usd to inr? Cite sources."
+
+### Step 1: Capability Extraction (LLM-only)
+```
+Inferred caps: ['finance', 'citations']
+```
+
+### Step 2: Shop (Sales Agent + Top-3)
+```json
+{
+  "status": "OK",
+  "recommendations": [
+    {
+      "app_id": "exchange_rates",
+      "name": "Exchange Rate Lookup",
+      "score": 0.9,
+      "why": [
+        "No required_capabilities specified; not penalized on capability coverage.",
+        "Supports citations/provenance: yes",
+        "Estimated latency: 500ms",
+        "Estimated cost: $0.0000"
+      ],
+      "rationale": "Directly matches finance capability and provides real-time data, which is essential for current exchange rates.",
+      "tradeoff": "Slight delay in latency compared to static sources."
+    }
+  ],
+  "explanation": [
+    "Task is to find the exchange rate from USD to INR with citations."
+  ],
+  "sales_agent": {
+    "summary": "Task is to find the exchange rate from USD to INR with citations.",
+    "final_choice": "exchange_rates",
+    "recommendations": [
+      {
+        "app_id": "exchange_rates",
+        "rationale": "Directly matches finance capability and provides real-time data, which is essential for current exchange rates.",
+        "tradeoff": "Slight delay in latency compared to static sources."
+      }
+    ]
+  }
+}
+```
+
+### Step 3: Client Choice (Top-3 Selection)
+```
+Chosen by client agent:
+app_id=exchange_rates
+reason=This app directly matches the finance capability needed for real-time exchange rate data and supports citations.
+```
+
+### Step 4: Execute
+```json
+{
+  "app_id": "exchange_rates",
+  "ok": true,
+  "output": {
+    "answer": "Exchange rates for 1 USD: INR: 90.3521. Last updated: Wed, 04 Feb 2026 00:02:32 +0000.",
+    "citations": ["https://open.er-api.com/v6/latest/USD"],
+    "retrieved_at": "2026-02-05T00:22:28.833676+00:00",
+    "quality": "verified"
+  },
+  "validation_errors": []
+}
+```
+
+### Step 5: Evidence Quality
+```json
+{
+  "quality": "HIGH",
+  "reasons": ["Evidence appears non-mock and contains citations."]
+}
+```
+
+### Step 6: Final Grounded Answer
+```
+According to the provided evidence, the exchange rate for 1 USD to INR is 90.3521 as of Wed, 04 Feb 2026 00:02:32 +0000.
+Sources: https://open.er-api.com/v6/latest/USD
 ```
 
 **Result: PASS**

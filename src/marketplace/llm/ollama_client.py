@@ -6,12 +6,23 @@ class OllamaConnectionError(RuntimeError):
     """Raised when Ollama is unreachable."""
 
 
-def ollama_generate(model: str, prompt: str) -> str:
+def ollama_generate(
+    model: str,
+    prompt: str,
+    options: dict | None = None,
+    response_format: str | None = None,
+    timeout: int | None = None,
+) -> str:
+    payload = {"model": model, "prompt": prompt, "stream": False}
+    if options:
+        payload["options"] = options
+    if response_format:
+        payload["format"] = response_format
     try:
         r = requests.post(
             OLLAMA_URL,
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=OLLAMA_TIMEOUT,
+            json=payload,
+            timeout=timeout if timeout is not None else OLLAMA_TIMEOUT,
         )
         r.raise_for_status()
     except requests.ConnectionError:

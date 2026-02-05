@@ -1,6 +1,6 @@
 ![Axiomeer](Test%20Images/Banner.png)
 
-# Axiomeer (v3)
+# Axiomeer (v4)
 
 ### The Marketplace for AI Agents
 
@@ -10,7 +10,7 @@ Think of it as an **App Store for AI**. Anyone can publish a product (a dataset,
 
 This is not another tool-calling framework. This is **infrastructure for an AI-to-AI economy** where agents autonomously find and consume the right resources, and every transaction is verified.
 
-> **Status: v3** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v3 ships with **7 real providers** (weather, Wikipedia, country data, exchange rates, dictionary, book search, math facts) -- all free, no API keys. The marketplace now uses an **LLM sales agent** to choose the best product and explain the recommendation. Capabilities are inferred by the LLM only (no keyword heuristics), and the client uses the sales agent’s feedback to respond to users. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
+> **Status: v4** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v4 ships with **8 real providers** (weather, Wikipedia summary, country data, exchange rates, dictionary, book search, Wikidata entity search, Wikipedia dumps) -- all free, no API keys. The marketplace now uses an **LLM sales agent** to produce the top 3 recommendations with tradeoffs, and the **client agent chooses among them** before execution. Capabilities are inferred by the LLM only (no keyword heuristics), and the client uses the sales agent’s feedback to respond to users. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
 
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
@@ -22,6 +22,7 @@ This is not another tool-calling framework. This is **infrastructure for an AI-t
 - [How It Differs from MCP](#how-it-differs-from-mcp)
 - [The Vision](#the-vision)
 - [Key Features](#key-features)
+- [What's New in v4 (Feb 2026)](#whats-new-in-v4-feb-2026)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Repository Structure](#repository-structure)
@@ -95,7 +96,7 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 - **Computation** -- code execution sandboxes, math solvers, data processing pipelines
 - **Aggregators** -- products that themselves call multiple sources and return consolidated results
 
-> v2 ships with 7 real providers across weather, search, finance, docs, and math. The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
+> v4 ships with 8 real providers across weather, search, finance, docs, and knowledge graphs. The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
 
 **Where this is headed:**
 - An agent asks: *"I need current stock data with citations under 500ms"* -- the marketplace finds the best provider, executes it, validates the citations, and delivers verified data
@@ -117,9 +118,21 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 - **Execution Receipts** -- Immutable audit log of every transaction between agents and providers
 - **Multi-Provider Competition** -- Multiple providers can offer the same capability; the best one wins at runtime
 - **Graceful Abstention** -- When evidence is insufficient, agents abstain instead of hallucinating
-- **LLM Capability Inference** -- Extracts required capabilities from natural language via Ollama + heuristic fallbacks
+- **LLM Capability Inference** -- Extracts required capabilities from natural language via Ollama (LLM-only, no keyword heuristics)
 - **Local-First** -- Uses Ollama for local model inference; no paid API keys required
 - **Idempotent Publishing** -- Manifest-based product registration, safe to retry
+
+---
+
+## What's New in v4 (Feb 2026)
+
+- **Sales agent top-3** -- An LLM produces the top 3 recommendations with rationale + tradeoff
+- **Client agent selection** -- The client LLM chooses among the top 3 before execution
+- **Robust sales-agent parsing** -- Strict JSON handling with allowed app-id enforcement
+- **New providers** -- Wikidata entity search + Wikipedia dumps added (no keys)
+- **Provider cleanup** -- Numbers & Math Facts removed
+- **Recommendation completeness** -- Rationale/tradeoff now always present (derived from router signals when missing)
+- **Client visibility** -- `/shop` errors surface with clear codes in `client_llm`
 
 ---
 
@@ -216,7 +229,8 @@ No paid APIs are required. All LLM inference runs locally through Ollama.
 │   ├── exchange_rates.json
 │   ├── dictionary.json
 │   ├── open_library.json
-│   └── numbers_math.json
+│   ├── wikidata_search.json
+│   └── wikipedia_dumps.json
 ├── Test Images/                        # Banner assets and test results
 │   ├── Axiomeer.gif
 │   ├── Banner.png
@@ -410,19 +424,21 @@ python -m marketplace.cli apps
 
 ## Client LLM Simulation
 
-The client LLM script demonstrates the full end-to-end pipeline: an LLM shops the marketplace, executes a tool, assesses evidence quality, and either answers with grounded citations or abstains.
+The client LLM script demonstrates the full end-to-end pipeline: an LLM shops the marketplace, the sales agent returns the top 3 with tradeoffs, the client LLM chooses among them, executes a tool, assesses evidence quality, and either answers with grounded citations or abstains.
 
 ```bash
-python -m marketplace.client_llm "What is the weather in Indianapolis right now? Cite sources."
+python -m marketplace.client_llm "What is the currency rate of usd to eur? Cite sources."
 ```
 
 **Pipeline steps:**
 1. Infer capabilities from the natural language question
 2. Shop the marketplace with inferred constraints
-3. Execute the top-ranked tool
-4. Assess evidence quality (deterministic: HIGH / MEDIUM / LOW)
-5. If **HIGH**: generate a grounded answer constrained to provided evidence
-6. If **LOW**: abstain deterministically (no hallucination)
+3. Sales agent returns the top 3 with rationale + tradeoff
+4. Client agent chooses the final app among the top 3
+5. Execute the chosen tool
+6. Assess evidence quality (deterministic: HIGH / MEDIUM / LOW)
+7. If **HIGH**: generate a grounded answer constrained to provided evidence
+8. If **LOW**: abstain deterministically (no hallucination)
 
 > Requires Ollama running with `qwen2.5:14b-instruct` pulled.
 
@@ -448,7 +464,8 @@ All endpoints are available at `http://127.0.0.1:8000`. Full interactive documen
 | `GET` | `/providers/exchangerate?base={currency}` | Exchange rates for 150+ currencies (free) |
 | `GET` | `/providers/dictionary?word={word}` | English dictionary definitions (free) |
 | `GET` | `/providers/openlibrary?q={query}` | Book search -- 20M+ titles (free) |
-| `GET` | `/providers/numbersapi?number={n}` | Math facts about numbers (free) |
+| `GET` | `/providers/wikidata?q={query}` | Wikidata entity search (free) |
+| `GET` | `/providers/wikipedia_dumps?lang={code}` | Wikipedia dump URL for a language (free) |
 
 ### Example: Shop request
 
@@ -466,6 +483,10 @@ curl -X POST http://127.0.0.1:8000/shop \
     }
   }'
 ```
+
+**Shop response notes:**
+- `recommendations` contains the ranked list with router scores.
+- `sales_agent` includes the sales agent’s structured message (`summary`, `final_choice`, and top-3 `recommendations` with `rationale` + `tradeoff`).
 
 ### Example: Execute request
 
@@ -583,7 +604,8 @@ $ python -m marketplace.cli apps
 ┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
 │ dictionary             │ English Dictionary        │ static    │ yes       │ search,docs,citations      │
 │ exchange_rates         │ Exchange Rate Lookup      │ realtime  │ yes       │ finance,realtime,citations │
-│ numbers_math           │ Numbers & Math Facts      │ static    │ yes       │ math,docs                  │
+│ wikidata_search        │ Wikidata Entity Search    │ daily     │ yes       │ rag,facts,search,citations │
+│ wikipedia_dumps        │ Wikipedia Dumps (Latest)  │ daily     │ yes       │ rag,corpus,docs,citations  │
 │ open_library           │ Open Library Book Search  │ daily     │ yes       │ search,docs,citations      │
 │ realtime_weather_agent │ Realtime Weather Agent v2 │ realtime  │ yes       │ weather,realtime,citations │
 │ rest_countries         │ REST Countries Search     │ daily     │ yes       │ search,docs,citations      │
@@ -602,7 +624,7 @@ $ python -m marketplace.cli shop \
 
 Auto capabilities: ['realtime', 'weather', 'citations']
 Status: OK
-Ranked apps by capability match (primary), then latency, then cost.
+Client requires real-time weather data with citations for Indianapolis; two candidates match.
                        Top Recommendations
 ┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
 ┃ # ┃ app_id                 ┃ name                      ┃ score ┃
@@ -611,11 +633,20 @@ Ranked apps by capability match (primary), then latency, then cost.
 │ 2 │ exchange_rates         │ Exchange Rate Lookup      │   0.9 │
 └───┴────────────────────────┴───────────────────────────┴───────┘
 
-Top pick: Realtime Weather Agent v2 (realtime_weather_agent)
+Recommendation 1: Realtime Weather Agent v2 (realtime_weather_agent)
  - No required_capabilities specified; not penalized on capability coverage.
  - Freshness matches requirement: realtime
  - Supports citations/provenance: yes
  - Estimated latency: 800ms
+ - Estimated cost: $0.0000
+Rationale: Directly matches weather and real-time requirements with citations.
+Tradeoff: Slight higher latency compared to the exchange rates app.
+
+Recommendation 2: Exchange Rate Lookup (exchange_rates)
+ - No required_capabilities specified; not penalized on capability coverage.
+ - Freshness matches requirement: realtime
+ - Supports citations/provenance: yes
+ - Estimated latency: 500ms
  - Estimated cost: $0.0000
 ```
 
@@ -658,12 +689,14 @@ Every execution (success or failure) is logged with latency and timestamp.
 $ python -m marketplace.cli runs --n 5
 
                               Recent Runs (top 5)
-┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ id ┃ app_id                 ┃ ok   ┃ latency_ms ┃ created_at                   ┃
-┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│  9 │ realtime_weather_agent │ True │        604 │ 2026-02-02T15:14:22.974...   │
-│  8 │ realtime_weather_agent │ True │        621 │ 2026-02-02T14:47:11.216...   │
-└────┴────────────────────────┴──────┴────────────┴──────────────────────────────┘
+┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ id ┃ app_id                 ┃ ok    ┃ latency_ms ┃ created_at                       ┃
+┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│  4 │ exchange_rates         │ True  │        178 │ 2026-02-05T00:22:28.809080+00:00 │
+│  3 │ realtime_weather_agent │ True  │        709 │ 2026-02-05T00:19:28.952649+00:00 │
+│  2 │ realtime_weather_agent │ True  │        684 │ 2026-02-04T23:53:42.891954+00:00 │
+│  1 │ exchange_rates         │ True  │        305 │ 2026-02-04T23:52:47.086544+00:00 │
+└────┴────────────────────────┴───────┴────────────┴──────────────────────────────────┘
 ```
 
 ### Step 7: Full client LLM simulation (end-to-end)
@@ -672,7 +705,7 @@ This runs the complete pipeline: LLM asks a question, shops the marketplace, exe
 
 ```bash
 $ python -m marketplace.client_llm \
-    "What is the weather in Indianapolis right now? Cite sources."
+    "What is the currency rate of usd to eur? Cite sources."
 ```
 
 **Output:**
@@ -680,10 +713,10 @@ $ python -m marketplace.client_llm \
 ```
 ╭──────────────────────────── Client LLM ────────────────────────────╮
 │ Question                                                           │
-│ What is the weather in Indianapolis right now? Cite sources.       │
+│ What is the currency rate of usd to eur? Cite sources.             │
 │                                                                    │
 │ Inferred caps                                                      │
-│ ['weather', 'realtime', 'citations']                               │
+│ ['finance', 'citations']                                           │
 ╰────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -695,66 +728,95 @@ The LLM extracted capability tags from the natural language question.
 │   "status": "OK",                                                  │
 │   "recommendations": [                                             │
 │     {                                                              │
-│       "app_id": "realtime_weather_agent",                          │
-│       "name": "Realtime Weather Agent v2",                         │
-│       "score": 0.877,                                              │
-│       "why": [                                                     │
-│         "No required_capabilities specified; not penalized on      │
-│ capability coverage.",                                             │
-│         "Freshness matches requirement: realtime",                 │
-│         "Supports citations/provenance: yes",                      │
-│         "Estimated latency: 800ms",                                │
-│         "Estimated cost: $0.0000"                                  │
-│       ]                                                            │
-│     },                                                             │
-│     {                                                              │
 │       "app_id": "exchange_rates",                                  │
 │       "name": "Exchange Rate Lookup",                              │
 │       "score": 0.9,                                                │
 │       "why": [                                                     │
 │         "No required_capabilities specified; not penalized on      │
 │ capability coverage.",                                             │
-│         "Freshness matches requirement: realtime",                 │
 │         "Supports citations/provenance: yes",                      │
 │         "Estimated latency: 500ms",                                │
 │         "Estimated cost: $0.0000"                                  │
-│       ]                                                            │
+│       ],                                                           │
+│       "rationale": "Provides real-time finance data including      │
+│ currency exchange rates, supported by recent citation             │
+│ capabilities and daily freshness.",                                │
+│       "tradeoff": "Estimated latency: 500ms; Estimated cost:       │
+│ $0.0000"                                                           │
 │     }                                                              │
 │   ],                                                               │
 │   "explanation": [                                                 │
-│     "The Realtime Weather Agent v2 is the best fit for the task as │
-│ it has the required capabilities of weather information, real-     │
-│ time data, and citation support."                                  │
-│   ]                                                                │
+│     "Currency rate of USD to EUR with citations."                  │
+│   ],                                                               │
+│   "sales_agent": {                                                 │
+│     "summary": "Currency rate of USD to EUR with citations.",      │
+│     "final_choice": "exchange_rates",                              │
+│     "recommendations": [                                           │
+│       {                                                            │
+│         "app_id": "exchange_rates",                                │
+│         "rationale": "Provides real-time finance data including    │
+│ currency exchange rates, supported by recent citation             │
+│ capabilities and daily freshness.",                                │
+│         "tradeoff": "Estimated latency: 500ms; Estimated cost:     │
+│ $0.0000"                                                           │
+│       }                                                            │
+│     ]                                                              │
+│   }                                                                │
 │ }                                                                  │
 ╰────────────────────────────────────────────────────────────────────╯
 ```
 
-The router ranked the weather agent. Score is 0.702 (75% capability match -- covers weather/realtime/citations but not search).
+The sales agent produced the Top‑3 with tradeoffs, and the client agent selected the final choice.
+
+```
+╭────────────── Chosen recommendation (client agent) ────────────────╮
+│ {                                                                  │
+│   "choice": {                                                      │
+│     "app_id": "exchange_rates",                                    │
+│     "reason": "This app directly matches the finance capability    │
+│ needed for real-time exchange rate data and supports citations."   │
+│   },                                                               │
+│   "picked": {                                                      │
+│     "app_id": "exchange_rates",                                    │
+│     "name": "Exchange Rate Lookup",                                │
+│     "score": 0.9,                                                  │
+│     "why": [                                                       │
+│       "No required_capabilities specified; not penalized on        │
+│ capability coverage.",                                             │
+│       "Supports citations/provenance: yes",                        │
+│       "Estimated latency: 500ms",                                  │
+│       "Estimated cost: $0.0000"                                    │
+│     ],                                                             │
+│     "rationale": "Directly matches finance capability and provides │
+│ real-time data, which is essential for current exchange rates.",   │
+│     "tradeoff": "Slight delay in latency compared to static        │
+│ sources."                                                          │
+│   }                                                                │
+│ }                                                                  │
+╰────────────────────────────────────────────────────────────────────╯
+```
 
 ```
 ╭────────────────── Marketplace /execute response ───────────────────╮
 │ {                                                                  │
-│   "app_id": "realtime_weather_agent",                              │
+│   "app_id": "exchange_rates",                                      │
 │   "ok": true,                                                      │
 │   "output": {                                                      │
-│     "answer": "At 2026-02-04T10:00, temperature is -5.0 C,         │
-│       weather_code=1, wind_speed=11.5 km/h (Open-Meteo).",         │
-│     "citations": ["https://open-meteo.com/"],                      │
-│     "retrieved_at": "2026-02-04T15:02:09.533216+00:00",            │
+│     "answer": "Exchange rates for 1 USD: EUR: 0.84687. Last        │
+│ updated: Thu, 05 Feb 2026 00:02:31 +0000.",                        │
+│     "citations": ["https://open.er-api.com/v6/latest/USD"],        │
+│     "retrieved_at": "2026-02-05T02:20:27.610761+00:00",            │
 │     "quality": "verified"                                          │
 │   },                                                               │
 │   "provenance": {                                                  │
-│     "sources": ["https://open-meteo.com/"],                        │
-│     "retrieved_at": "2026-02-04T15:02:09.533216+00:00",            │
+│     "sources": ["https://open.er-api.com/v6/latest/USD"],          │
+│     "retrieved_at": "2026-02-05T02:20:27.610761+00:00",            │
 │     "notes": []                                                    │
 │   },                                                               │
 │   "validation_errors": []                                          │
 │ }                                                                  │
 ╰────────────────────────────────────────────────────────────────────╯
 ```
-
-The provider returned real weather data. Validation passed (citations present, timestamp present).
 
 ```
 ╭──────────────────────── Evidence Quality ──────────────────────────╮
@@ -767,19 +829,14 @@ The provider returned real weather data. Validation passed (citations present, t
 ╰────────────────────────────────────────────────────────────────────╯
 ```
 
-Evidence quality is **HIGH** (non-mock, has citations). The LLM proceeds to generate an answer.
-
 ```
-╭──────────────────── Final Answer (Grounded) ───────────────────────╮
-│ According to Open-Meteo, the temperature in Indianapolis at 10:00  │
-│ on February 4, 2026, was -5.0 C with a weather code of 1 and wind  │
-│ speed of 11.5 km/h.                                                │
-│ 2026 at 15:14:46 UTC and has been verified. Therefore, the current │
-│ weather in Indianapolis is cold and windy. (Open-Meteo, 2026)      │
+╭───────────────────── Final Answer (Grounded) ──────────────────────╮
+│ According to the provided evidence, the exchange rate for 1 USD to │
+│ EUR is 0.84687 as of Thu, 05 Feb 2026 00:02:31 +0000.              │
+│                                                                    │
+│ Sources: https://open.er-api.com/v6/latest/USD                     │
 ╰────────────────────────────────────────────────────────────────────╯
 ```
-
-The LLM answered using **only** the evidence provided, with proper citations. No hallucination.
 
 ### What happens with mock/low-quality evidence
 
@@ -834,7 +891,7 @@ If citations are required but the provider does not return them, the execution i
 
 - [x] ~~Add test suite (pytest) -- 83 tests~~
 - [x] ~~Move configuration to environment variables / `.env` file~~
-- [x] ~~Replace mock providers with 7 real free-API providers~~
+- [x] ~~Replace mock providers with 8 real free-API providers~~
 - [x] ~~Auto-bootstrap manifests on startup~~
 - [x] ~~Fix execute pipeline (forward inputs to providers)~~
 - [x] ~~Anti-hallucination grounded answers with evidence quality checks~~
@@ -849,12 +906,14 @@ If citations are required but the provider does not return them, the execution i
 
 ---
 
-## v3 Changes
+## v4 Changes
 
-- **LLM Sales Agent** now selects the best product and provides the recommendation rationale.
-- **LLM-only capability inference** (no keyword heuristics).
-- **Client answers use sales-agent feedback**, with grounded responses on no-match cases.
-- **Provider set remains 7 free sources** (no paid APIs).
+- **Sales agent top-3** recommendations with structured rationale + tradeoff
+- **Client agent selection** before execution
+- **LLM-only capability inference** (no keyword heuristics)
+- **Provider set expanded to 8 free sources** (no paid APIs)
+- **Wikidata + Wikipedia dumps** added
+- **Numbers & Math Facts** removed
 ---
 
 ## Contributing
@@ -883,7 +942,13 @@ python -m pip install -e ".[dev]"
 pytest -v
 ```
 
-All 83 tests should pass before making any changes. Use `pytest -m "not integration"` to run without network access.
+All tests should pass before making any changes. Example output from a recent run:
+
+```
+69 passed in 2.35s
+```
+
+Use `pytest -m "not integration"` to run without network access.
 
 ### 4. Start the API server
 
@@ -894,7 +959,7 @@ uvicorn apps.api.main:app --reload
 ### 5. Verify apps are auto-loaded and test the flow
 
 ```bash
-python -m marketplace.cli apps                                          # all 7 manifests auto-loaded
+python -m marketplace.cli apps                                          # all 8 manifests auto-loaded
 python -m marketplace.cli shop "weather" --auto-caps --execute-top      # shop + execute
 python -m marketplace.cli runs                                          # check audit log
 ```

@@ -25,12 +25,24 @@ class Recommendation(BaseModel):
     name: str
     score: float = Field(ge=0.0, le=1.0)
     why: List[str] = Field(default_factory=list)
+    rationale: str | None = None
+    tradeoff: str | None = None
 
+class SalesAgentRecommendation(BaseModel):
+    app_id: str
+    rationale: str
+    tradeoff: str
+
+class SalesAgentMessage(BaseModel):
+    summary: str
+    final_choice: str
+    recommendations: List[SalesAgentRecommendation] = Field(default_factory=list)
 
 class ShopResponse(BaseModel):
     status: ShopStatus
     recommendations: List[Recommendation] = Field(default_factory=list)
     explanation: List[str] = Field(default_factory=list)
+    sales_agent: SalesAgentMessage | None = None
 
 
 class AppCreate(BaseModel):

@@ -1,0 +1,12 @@
+{
+  "id": "wikipedia_dumps",
+  "name": "Wikipedia Dumps (Latest)",
+  "description": "Returns latest Wikipedia pages-articles dump URL for a language code (e.g., en, es, fr).",
+  "capabilities": ["rag", "corpus", "docs", "citations"],
+  "freshness": "daily",
+  "citations_supported": true,
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/wikipedia_dumps"
+}

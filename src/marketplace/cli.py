@@ -109,13 +109,18 @@ def shop(
         t.add_row(str(i), r["app_id"], r["name"], str(r["score"]))
     print(t)
 
-    # Print why for top pick
-    top = recs[0]
-    print(f"\n[bold]Top pick:[/bold] {top['name']} ({top['app_id']})")
-    for line in top["why"]:
-        print(f" - {line}")
+    # Print top 3 details
+    for i, r in enumerate(recs[:3], 1):
+        print(f"\n[bold]Recommendation {i}:[/bold] {r['name']} ({r['app_id']})")
+        for line in r.get("why", []):
+            print(f" - {line}")
+        if r.get("rationale"):
+            print(f"[dim]Rationale:[/dim] {r['rationale']}")
+        if r.get("tradeoff"):
+            print(f"[dim]Tradeoff:[/dim] {r['tradeoff']}")
 
     if execute_top:
+        top = recs[0]
         ex_req = {
             "app_id": top["app_id"],
             "task": task,
