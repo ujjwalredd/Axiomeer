@@ -141,7 +141,7 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 ## Architecture Overview
 
 ```
-User / LLM Client
+User / Client LLM (optional)
        |
        v
 +------+-------+     +-----------------+
@@ -152,9 +152,12 @@ User / LLM Client
 +------+-----------------------+--------+
 |           Marketplace Core            |
 |                                       |
-|  cap_extractor  ->  router  ->  exec  |
-|  (infer caps)     (rank)     (call +  |
-|                              validate)|
+|  cap_extractor -> router -> sales     |
+|  (infer caps)    (rank +  (Top-K +    |
+|                  strict)   rationale) |
+|                      -> exec          |
+|                         (call +       |
+|                          validate)    |
 +------------------+--------------------+
                    |
        +-----------+-----------+
@@ -169,10 +172,11 @@ User / LLM Client
 **Flow:**
 1. Client sends a task (natural language or structured request)
 2. Capabilities are inferred (LLM + heuristics) or specified manually
-3. Router ranks registered apps against constraints
-4. Top app is executed via its `executor_url`
-5. Output is validated (citations, timestamps)
-6. A receipt is logged to SQLite regardless of outcome
+3. Router ranks registered apps against constraints **and strict thresholds**
+4. Sales agent summarizes top‑K with rationale + tradeoff
+5. Top app is executed via its `executor_url`
+6. Output is validated (citations, timestamps)
+7. A receipt is logged to SQLite regardless of outcome
 
 ---
 
@@ -211,7 +215,8 @@ No paid APIs are required. All LLM inference runs locally through Ollama.
 │       │   ├── router.py             # Weighted recommendation engine
 │       │   └── validate.py           # Output validation (citations, timestamps)
 │       ├── llm/
-│       │   └── ollama_client.py       # Ollama HTTP client wrapper
+│       │   ├── ollama_client.py       # Ollama HTTP client wrapper
+│       │   └── sales_agent.py         # Top‑K rationale + tradeoff generator
 │       └── storage/
 │           ├── db.py                  # SQLAlchemy engine and session setup
 │           ├── models.py             # AppListing ORM model
@@ -600,16 +605,22 @@ curl -X POST http://127.0.0.1:8000/execute \
 
 ### Recommendation Engine
 
-The router scores apps using weighted criteria:
+The router scores apps using **relative weights** (they are normalized by the total at runtime, so the numbers do not need to sum to 100%):
 
 | Weight | Factor | Description |
 |--------|--------|-------------|
-| 70% | Capability Match | Coverage ratio of required vs. available capabilities |
-| 20% | Latency | Penalizes high latency with a soft curve |
-| 10% | Cost | Prefers cheaper without over-penalizing |
-| 15% | Trust Score | Success rate, citation pass rate, and latency percentile |
+| 0.70 | Capability Match | Coverage ratio of required vs. available capabilities |
+| 0.20 | Latency | Penalizes high latency with a soft curve |
+| 0.10 | Cost | Prefers cheaper without over-penalizing |
+| 0.15 | Trust Score | Success rate, citation pass rate, and latency percentile |
+| 0.25 | Relevance | TF‑IDF similarity between task and app metadata |
 
-Weights are normalized by the total, so you can adjust `W_TRUST` without breaking the score scale.
+Weights are normalized by the total (sum of all weights), so the scale stays consistent.
+
+**Strict thresholds** (apps are excluded if they fail any):
+- `MIN_CAP_COVERAGE` (default 1.0)
+- `MIN_RELEVANCE_SCORE` (default 0.08)
+- `MIN_TOTAL_SCORE` (default 0.55)
 
 **Hard filters** (apps are excluded if they fail any):
 - Freshness mismatch
