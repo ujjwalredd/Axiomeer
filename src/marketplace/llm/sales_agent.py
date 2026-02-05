@@ -38,11 +38,13 @@ Return ONLY valid JSON in this schema:
 
 Rules:
 - Choose up to 3 app_ids from the candidates list, ordered best to worst.
+- The recommendations list MUST be non-empty unless final_choice is "NO_MATCH".
 - The final_choice must be one of the recommended app_ids.
+- Set final_choice to recommendations[0].app_id.
 - Use ONLY the strings in ALLOWED_APP_IDS for final_choice and recommendation app_id values.
 - If none are suitable, set final_choice to "NO_MATCH", return an empty recommendations list, and explain why in summary.
-- Prefer NO_MATCH if the task asks for specific facts that the candidates are unlikely to provide (e.g., fictional entities or data not covered by any candidate capabilities).
-- Use candidate capabilities as the primary signal for domain fit. If the task is about finance and no candidate has a finance capability, return NO_MATCH.
+- Use the candidate scores as the primary ranking signal (higher score = more relevant).
+- Use candidate capabilities and descriptions to justify relevance.
 - Prefer candidates whose capabilities overlap with REQUESTED_CAPABILITIES. If REQUESTED_CAPABILITIES includes finance, choose a finance-capable candidate when available.
 - The rationale and tradeoff must be grounded in the provided candidate data.
 - Keep summary concise and grounded in the candidate list.
@@ -82,6 +84,11 @@ SCHEMA:
   ]
 }}
 
+Rules:
+- recommendations MUST be non-empty unless final_choice is "NO_MATCH".
+- final_choice MUST be one of the recommendation app_ids.
+- Set final_choice to recommendations[0].app_id.
+
 TASK:
 {task}
 
@@ -100,6 +107,7 @@ RECENT_HISTORY:
 CANDIDATES:
 {candidates_json}
 """
+
 
 NO_MATCH_PROMPT = """You are a marketplace sales agent. There are no suitable products for the client request.
 
@@ -148,7 +156,9 @@ Rules:
 - Return ONLY valid JSON.
 - final_choice MUST be one of ALLOWED_APP_IDS.
 - recommendations MUST be a list (max 3) of objects with app_id from ALLOWED_APP_IDS.
+- recommendations MUST be non-empty unless final_choice is "NO_MATCH".
 - final_choice MUST be included in recommendations.
+- Set final_choice to recommendations[0].app_id.
 - Preserve the original meaning where possible.
 
 TASK:
@@ -173,26 +183,50 @@ def _extract_json(raw: str) -> str:
         raw = raw[raw.find("{") : raw.rfind("}") + 1]
     return raw
 
+def _extract_json_candidates(raw: str) -> list[str]:
+    if not raw:
+        return []
+    candidates: list[str] = []
+    starts = [i for i, ch in enumerate(raw) if ch == "{"]
+    for s in starts:
+        depth = 0
+        for i in range(s, len(raw)):
+            ch = raw[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidates.append(raw[s : i + 1])
+                    break
+    if not candidates:
+        candidates.append(_extract_json(raw))
+    return candidates
+
 def _safe_json_load(raw: str) -> dict[str, Any] | None:
-    cleaned = _extract_json(raw)
-    if not cleaned:
-        return None
-    try:
-        payload = json.loads(cleaned)
-        return payload if isinstance(payload, dict) else None
-    except json.JSONDecodeError:
-        pass
-    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
-    try:
-        payload = json.loads(cleaned)
-        return payload if isinstance(payload, dict) else None
-    except json.JSONDecodeError:
-        pass
-    try:
-        payload = ast.literal_eval(cleaned)
-        return payload if isinstance(payload, dict) else None
-    except Exception:
-        return None
+    for cleaned in _extract_json_candidates(raw):
+        if not cleaned:
+            continue
+        try:
+            payload = json.loads(cleaned)
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError:
+            pass
+        cleaned2 = re.sub(r",\s*([}\]])", r"\1", cleaned)
+        try:
+            payload = json.loads(cleaned2)
+            if isinstance(payload, dict):
+                return payload
+        except json.JSONDecodeError:
+            pass
+        try:
+            payload = ast.literal_eval(cleaned2)
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            continue
+    return None
 
 def _repair_json(raw: str, schema: dict[str, Any]) -> dict[str, Any]:
     fixed = ollama_generate(
@@ -205,7 +239,7 @@ def _repair_json(raw: str, schema: dict[str, Any]) -> dict[str, Any]:
             "temperature": 0.0,
             "num_predict": SALES_AGENT_MAX_TOKENS,
         },
-        response_format=None,
+        response_format="json",
         timeout=SALES_AGENT_TIMEOUT,
     )
     payload = _safe_json_load(fixed)
@@ -241,7 +275,7 @@ def _repair_sales_payload(
             "temperature": 0.0,
             "num_predict": SALES_AGENT_MAX_TOKENS,
         },
-        response_format=None,
+        response_format="json",
         timeout=SALES_AGENT_TIMEOUT,
     )
     payload = _safe_json_load(fixed)
@@ -303,6 +337,13 @@ def _parse_sales_payload(
         final_choice = None
     if not isinstance(recommendations, list):
         raise SalesAgentError("sales_agent_invalid_recommendations")
+
+    if isinstance(final_choice, str) and final_choice.strip().upper() == "NO_MATCH" and not recommendations:
+        return {
+            "summary": summary.strip(),
+            "final_choice": "NO_MATCH",
+            "recommendations": [],
+        }
 
     candidate_map: dict[str, dict[str, Any]] = {
         c.get("app_id"): c for c in candidates if c.get("app_id")
@@ -392,7 +433,7 @@ def _parse_sales_payload(
         raise SalesAgentError("sales_agent_missing_recommendations")
 
     if resolved_final is None or resolved_final not in seen:
-        resolved_final = parsed_recs[0]["app_id"]
+        raise SalesAgentError("sales_agent_invalid_final_choice")
 
     return {
         "summary": summary.strip(),
@@ -438,14 +479,27 @@ def sales_recommendation(
     requested_caps: list[str] | None = None,
     history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    compact_candidates = [
+        {
+            "app_id": c.get("app_id"),
+            "name": c.get("name"),
+            "score": c.get("score"),
+            "capabilities": c.get("capabilities", []),
+            "freshness": c.get("freshness"),
+            "citations_supported": c.get("citations_supported"),
+            "latency_est_ms": c.get("latency_est_ms"),
+            "cost_est_usd": c.get("cost_est_usd"),
+        }
+        for c in candidates
+    ]
     try:
         raw = _generate_sales_json(
             task=task,
             constraints=constraints,
-            candidates=candidates,
+            candidates=compact_candidates,
             requested_caps=requested_caps,
             history=history,
-            strict=False,
+            strict=True,
             response_format="json",
         )
     except OllamaConnectionError as e:
@@ -454,18 +508,6 @@ def sales_recommendation(
     payload = _safe_json_load(raw)
     if payload is None:
         # Retry with a strict prompt and compact candidate payload.
-        compact_candidates = [
-            {
-                "app_id": c.get("app_id"),
-                "name": c.get("name"),
-                "capabilities": c.get("capabilities", []),
-                "freshness": c.get("freshness"),
-                "citations_supported": c.get("citations_supported"),
-                "latency_est_ms": c.get("latency_est_ms"),
-                "cost_est_usd": c.get("cost_est_usd"),
-            }
-            for c in candidates
-        ]
         try:
             raw = _generate_sales_json(
                 task=task,
@@ -474,7 +516,7 @@ def sales_recommendation(
                 requested_caps=requested_caps,
                 history=history,
                 strict=True,
-                response_format=None,
+                response_format="json",
             )
             payload = _safe_json_load(raw)
         except Exception:
@@ -494,13 +536,15 @@ def sales_recommendation(
             except Exception as e:
                 raise SalesAgentError("sales_agent_invalid_json") from e
     try:
-        return _parse_sales_payload(payload, candidates)
+        parsed = _parse_sales_payload(payload, candidates)
+        return parsed
     except SalesAgentError as e:
         last_error = e
         allowed_ids = [c.get("app_id") for c in candidates if c.get("app_id")]
         try:
             repaired = _repair_sales_payload(raw, task, candidates, allowed_ids)
-            return _parse_sales_payload(repaired, candidates)
+            parsed = _parse_sales_payload(repaired, candidates)
+            return parsed
         except Exception as e2:
             raise SalesAgentError(str(last_error)) from e2
 

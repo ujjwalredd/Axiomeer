@@ -1,5 +1,8 @@
+import inspect
 import typer
 import requests
+import click
+import re
 from rich import print
 from rich.table import Table
 import json
@@ -8,11 +11,55 @@ from marketplace.core.cap_extractor import extract_capabilities
 from marketplace.settings import API_BASE_URL
 
 
+def _patch_click_make_metavar():
+    """Typer rich help calls make_metavar without ctx; Click>=8.3 requires ctx."""
+    try:
+        sig = inspect.signature(click.Parameter.make_metavar)
+        if len(sig.parameters) == 2:
+            original = click.Parameter.make_metavar
+
+            def _make_metavar(self, ctx=None):
+                if ctx is None:
+                    ctx = click.Context(click.Command("marketplace"))
+                return original(self, ctx)
+
+            click.Parameter.make_metavar = _make_metavar
+    except Exception:
+        pass
+
+    # TyperArgument/TyperOption in older Typer expect no ctx; Click 8.3 passes ctx.
+    try:
+        from typer import core as typer_core
+
+        def _wrap_make_metavar(cls):
+            def _typer_make_metavar(self, ctx=None):
+                if ctx is None:
+                    ctx = click.Context(click.Command("marketplace"))
+                return click.Parameter.make_metavar(self, ctx)
+
+            cls.make_metavar = _typer_make_metavar
+
+        for cls in (typer_core.TyperArgument, typer_core.TyperOption):
+            sig = inspect.signature(cls.make_metavar)
+            if len(sig.parameters) == 1:
+                _wrap_make_metavar(cls)
+    except Exception:
+        pass
+
+
+_patch_click_make_metavar()
+
 app = typer.Typer(add_completion=False)
 
 
 def _post(path: str, payload: dict):
-    r = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=20)
+    r = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=60)
+    if not r.ok:
+        print(f"[red]HTTP {r.status_code} for {path}[/red]")
+        try:
+            print(r.json())
+        except Exception:
+            print(r.text)
     r.raise_for_status()
     return r.json()
 
@@ -21,6 +68,111 @@ def _get(path: str):
     r = requests.get(f"{API_BASE_URL}{path}", timeout=20)
     r.raise_for_status()
     return r.json()
+
+
+def _extract_location(question: str) -> str | None:
+    q = question.strip()
+    m = re.search(r"\bin\s+([A-Za-z0-9 .,'-]+)", q, flags=re.IGNORECASE)
+    if not m:
+        return None
+    loc = m.group(1).strip()
+    loc = re.sub(
+        r"\b(right now|currently|today|now|this morning|this afternoon|this evening)\b.*$",
+        "",
+        loc,
+        flags=re.IGNORECASE,
+    ).strip()
+    loc = re.sub(r"[?.!,;:]+$", "", loc)
+    return loc if loc else None
+
+
+def _extract_fx_pair(question: str) -> tuple[str | None, str | None]:
+    q = question.strip()
+    m = re.search(r"\b([A-Za-z]{3})\s*/\s*([A-Za-z]{3})\b", q, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).upper(), m.group(2).upper()
+    m = re.search(r"\b([A-Za-z]{3})\s+to\s+([A-Za-z]{3})\b", q, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).upper(), m.group(2).upper()
+    return None, None
+
+
+def _extract_subject(question: str) -> str | None:
+    q = question.strip()
+    m = re.search(r"\"([^\"]+)\"", q)
+    if m:
+        return m.group(1).strip()
+    patterns = [
+        r"\bwhat is\s+(.+)",
+        r"\bwho is\s+(.+)",
+        r"\bdefine\s+(.+)",
+        r"\bdefinition of\s+(.+)",
+        r"\bmeaning of\s+(.+)",
+        r"\bgdp of\s+(.+)",
+        r"\bwhat is the gdp of\s+(.+)",
+        r"\bfind\s+(.+)",
+    ]
+    for p in patterns:
+        m = re.search(p, q, flags=re.IGNORECASE)
+        if m:
+            subject = m.group(1).strip()
+            subject = re.sub(r"\b(cite sources|with sources|with citations|citations|sources)\b.*$", "", subject, flags=re.IGNORECASE).strip()
+            subject = re.sub(r"\b(population|gdp|capital|area|currency)\b.*$", "", subject, flags=re.IGNORECASE).strip()
+            subject = re.sub(r"^wikidata\s+entity\s+for\s+", "", subject, flags=re.IGNORECASE).strip()
+            subject = re.sub(r"^entity\s+for\s+", "", subject, flags=re.IGNORECASE).strip()
+            subject = re.sub(r"[?.!,;:]+$", "", subject)
+            return subject
+    return None
+
+
+def _extract_lang_code(question: str) -> str | None:
+    q = question.strip().lower()
+    m = re.search(r"\blang(?:uage)?\s*[:=]?\s*([a-z]{2})\b", q)
+    if m:
+        return m.group(1)
+    m = re.search(r"\bfor\s+([a-z]{2})\b", q)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _geocode_location(location: str) -> dict | None:
+    def _variants(loc: str) -> list[str]:
+        variants = [loc.strip()]
+        variants.append(loc.replace(",", " ").strip())
+        if "," in loc:
+            variants.append(loc.split(",", 1)[0].strip())
+        variants.append(re.sub(r"\s+[A-Za-z]{2}$", "", loc).strip())
+        out: list[str] = []
+        seen = set()
+        for v in variants:
+            if v and v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
+
+    try:
+        for candidate in _variants(location):
+            r = requests.get(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": candidate, "count": 1, "language": "en", "format": "json"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("results") or []
+            if not results:
+                continue
+            top = results[0]
+            tz = top.get("timezone")
+            return {
+                "lat": top.get("latitude"),
+                "lon": top.get("longitude"),
+                "timezone_name": tz,
+            }
+        return None
+    except Exception:
+        return None
 
 
 @app.command()
@@ -46,7 +198,7 @@ def apps():
 
 @app.command()
 def shop(
-    task: str,
+    task: str = typer.Argument(..., help="Natural-language task to shop for"),
     caps: str = "",
     auto_caps: bool = False,
     freshness: str = "",
@@ -62,6 +214,11 @@ def shop(
     - caps is optional: `--caps "weather,realtime"`
     - auto_caps uses Ollama to infer tags: `--auto-caps`
     """
+    if not task:
+        print("[red]Missing required task.[/red]")
+        print('Usage: python -m marketplace.cli shop "your task here"')
+        raise typer.Exit(code=1)
+
     # ---- Parse manual caps ----
     caps_list = [x.strip().lower() for x in caps.split(",") if x.strip()]
 
@@ -121,10 +278,45 @@ def shop(
 
     if execute_top:
         top = recs[0]
+        inputs: dict = {}
+        if top["app_id"] == "realtime_weather_agent":
+            location = _extract_location(task)
+            if location:
+                geo = _geocode_location(location)
+                if geo:
+                    inputs.update(geo)
+                else:
+                    print("[yellow]Warning:[/yellow] Could not geocode location for weather; executing without lat/lon.")
+            else:
+                print("[yellow]Warning:[/yellow] Could not extract location for weather; executing without lat/lon.")
+        elif top["app_id"] == "exchange_rates":
+            base, target = _extract_fx_pair(task)
+            if base:
+                inputs["base"] = base
+            if target:
+                inputs["target"] = target
+        elif top["app_id"] in {"wikipedia_search", "wikidata_search", "open_library", "rest_countries"}:
+            subject = _extract_subject(task)
+            if subject:
+                inputs["q"] = subject
+            else:
+                print("[yellow]Warning:[/yellow] Could not extract query subject; executing without query.")
+        elif top["app_id"] == "dictionary":
+            subject = _extract_subject(task)
+            if subject:
+                inputs["word"] = subject.split()[0]
+            else:
+                print("[yellow]Warning:[/yellow] Could not extract word; executing without word.")
+        elif top["app_id"] == "wikipedia_dumps":
+            lang = _extract_lang_code(task)
+            if lang:
+                inputs["lang"] = lang
+            else:
+                print("[yellow]Warning:[/yellow] Could not extract language code; executing without lang.")
         ex_req = {
             "app_id": top["app_id"],
             "task": task,
-            "inputs": {},
+            "inputs": inputs,
             "require_citations": citations,
         }
         ex = _post("/execute", ex_req)
@@ -142,8 +334,12 @@ def shop(
             print(ex["output"])
 
 @app.command()
-def publish(path: str):
+def publish(path: str = typer.Argument(None, help="Path to a manifest JSON file")):
     """Publish an app manifest (idempotent upsert)."""
+    if not path:
+        print("[red]Missing required manifest path.[/red]")
+        print("Usage: python -m marketplace.cli publish manifests/<file>.json")
+        raise typer.Exit(code=1)
     p = Path(path)
     if not p.exists():
         raise typer.BadParameter(f"File not found: {path}")
@@ -176,6 +372,45 @@ def runs(n: int = 10):
             str(r["ok"]),
             str(r["latency_ms"]),
             r["created_at"],
+        )
+    print(t)
+
+
+@app.command()
+def run(run_id: int):
+    """Fetch a full execution receipt by run_id."""
+    receipt = _get(f"/runs/{run_id}")
+    print(receipt)
+
+
+@app.command()
+def trust(app_id: str = ""):
+    """Show trust scores for all apps or a single app."""
+    if app_id:
+        rows = [_get(f"/apps/{app_id}/trust")]
+    else:
+        rows = _get("/trust")
+
+    t = Table(title="App Trust Scores")
+    t.add_column("app_id")
+    t.add_column("trust_score", justify="right")
+    t.add_column("success_rate", justify="right")
+    t.add_column("citation_pass", justify="right")
+    t.add_column("avg_latency", justify="right")
+    t.add_column("p95_latency", justify="right")
+    t.add_column("last_run_at")
+    t.add_column("insufficient", justify="center")
+
+    for r in rows:
+        t.add_row(
+            r["app_id"],
+            f"{r['trust_score']:.2f}",
+            f"{r['success_rate']:.2f}",
+            f"{r['citation_pass_rate']:.2f}",
+            str(r["avg_latency_ms"]) if r["avg_latency_ms"] is not None else "-",
+            str(r["p95_latency_ms"]) if r["p95_latency_ms"] is not None else "-",
+            r["last_run_at"] or "-",
+            "yes" if r.get("insufficient_data") else "no",
         )
     print(t)
 

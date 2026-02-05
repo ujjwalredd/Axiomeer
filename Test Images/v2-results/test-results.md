@@ -1,8 +1,8 @@
-# Axiomeer v4 -- End-to-End Test Results
+# Axiomeer v5 -- End-to-End Test Results
 
-Tested on: 2026-02-04
-Model: qwen2.5:14b-instruct (local via Ollama)
-All 7 providers auto-loaded, tests run against live external APIs where available.
+Tested on: 2026-02-05
+Models: qwen2.5:14b-instruct and phi3.5:3.8b (local via Ollama)
+All 8 providers auto-loaded, tests run against live external APIs where available.
 
 ---
 
@@ -13,6 +13,33 @@ All 7 providers auto-loaded, tests run against live external APIs where availabl
 ```
 
 All tests passed.
+
+---
+
+## Sales-Agent Timing Comparison (v5)
+
+End-to-end timings for `python -m marketplace.cli shop ... --execute-top` on a local machine.
+Same queries, same API server, only the sales-agent model changed.
+
+- Small model: `phi3.5:3.8b` with `SALES_AGENT_MAX_TOKENS=400`
+- Large model: `qwen2.5:14b-instruct` with `SALES_AGENT_MAX_TOKENS=200`
+
+| Query | Small Model (s) | Large Model (s) | Delta (Large - Small) |
+|---|---:|---:|---:|
+| Weather Indianapolis | 18.15 | 22.70 | +4.55 |
+| USD to EUR | 19.19 | 44.98 | +25.79 |
+| What is Python | 21.80 | 46.92 | +25.12 |
+| France population | 18.79 | 48.28 | +29.49 |
+| Define serendipity | 19.13 | 27.22 | +8.09 |
+| Books about Python | 19.36 | 47.46 | +28.10 |
+| Wikidata entity | 20.93 | 48.71 | +27.78 |
+| Wikipedia dump | 17.56 | 27.91 | +10.35 |
+
+**Why the small model is faster:**
+1. Fewer parameters (3.8B vs 14B) means less compute per token.
+2. Smaller attention/KV cache reduces memory traffic during decoding.
+3. The sales-agent task is short, structured JSON — small models handle it efficiently.
+4. Large models are slower to load and decode on local hardware.
 
 ---
 

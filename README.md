@@ -1,6 +1,6 @@
 ![Axiomeer](Test%20Images/Banner.png)
 
-# Axiomeer (v4)
+# Axiomeer (v5)
 
 ### The Marketplace for AI Agents
 
@@ -10,7 +10,7 @@ Think of it as an **App Store for AI**. Anyone can publish a product (a dataset,
 
 This is not another tool-calling framework. This is **infrastructure for an AI-to-AI economy** where agents autonomously find and consume the right resources, and every transaction is verified.
 
-> **Status: v4** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v4 ships with **8 real providers** (weather, Wikipedia summary, country data, exchange rates, dictionary, book search, Wikidata entity search, Wikipedia dumps) -- all free, no API keys. The marketplace now uses an **LLM sales agent** to produce the top 3 recommendations with tradeoffs, and the **client agent chooses among them** before execution. Capabilities are inferred by the LLM only (no keyword heuristics), and the client uses the sales agent’s feedback to respond to users. Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
+> **Status: v5** -- The core pipeline works end-to-end (discover, rank, execute, validate, audit). v5 ships with **8 real providers** (weather, Wikipedia summary, country data, exchange rates, dictionary, book search, Wikidata entity search, Wikipedia dumps) -- all free, no API keys. The marketplace uses an **LLM sales agent** to produce the top 3 recommendations with tradeoffs, and clients can execute the top pick (or choose manually). Capabilities are inferred by **LLM + light heuristics** (or specified manually). Manifests auto-load on startup. The architecture is built so that **any HTTP endpoint returning structured JSON can be a product**. v5 adds **sales-agent model benchmarking**, **provider/shop caching**, **relevance scoring**, and improved **capability tags** for book and population queries. See the [Roadmap](#roadmap) and [Contributing](#contributing) sections.
 
 ![Axiomeer Demo](Test%20Images/Axiomeer.gif)
 
@@ -22,7 +22,7 @@ This is not another tool-calling framework. This is **infrastructure for an AI-t
 - [How It Differs from MCP](#how-it-differs-from-mcp)
 - [The Vision](#the-vision)
 - [Key Features](#key-features)
-- [What's New in v4 (Feb 2026)](#whats-new-in-v4-feb-2026)
+- [What's New in v5 (Feb 2026)](#whats-new-in-v5-feb-2026)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [Repository Structure](#repository-structure)
@@ -31,7 +31,7 @@ This is not another tool-calling framework. This is **infrastructure for an AI-t
 - [Running the API Server](#running-the-api-server)
 - [CLI Usage](#cli-usage)
 - [Publishing Apps](#publishing-apps)
-- [Client LLM Simulation](#client-llm-simulation)
+- [CLI End-to-End Example](#cli-end-to-end-example)
 - [API Reference](#api-reference)
 - [Core Concepts](#core-concepts)
 - [Configuration](#configuration)
@@ -56,7 +56,7 @@ Axiomeer solves this. It creates a **universal catalog** where:
 The trust layer is what makes this different from a simple registry:
 
 - **If citations are required but missing** -- execution fails. No silent garbage.
-- **If evidence quality is LOW** (mock/simulated) -- the agent abstains rather than hallucinating a confident wrong answer.
+- **If validation fails** (missing citations/timestamps) -- the execution is marked failed with clear errors.
 - **Every execution produces a receipt** -- success or failure, with full provenance, logged and auditable.
 
 The goal: agents that can **autonomously find and consume the right resources**, with infrastructure-level guarantees that the results are real.
@@ -74,7 +74,7 @@ Axiomeer operates at a different layer:
 | **Scope** | Connect one model to one tool server | Connect any agent to any product in a marketplace |
 | **Discovery** | The developer decides which tools are available | The agent discovers tools at runtime based on what it needs |
 | **Selection** | The model picks from a fixed tool list | The marketplace ranks all available products by capability, cost, latency, freshness |
-| **Trust** | No built-in output validation | Enforces citations, validates provenance, assesses evidence quality |
+| **Trust** | No built-in output validation | Enforces citations and validates provenance |
 | **Auditing** | No execution logging | Every execution logged as an immutable receipt |
 | **Publishing** | Developer registers tools in config | Anyone publishes products via JSON manifests |
 | **Multi-provider** | One server per integration | Multiple competing providers for the same capability |
@@ -96,7 +96,7 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 - **Computation** -- code execution sandboxes, math solvers, data processing pipelines
 - **Aggregators** -- products that themselves call multiple sources and return consolidated results
 
-> v4 ships with 8 real providers across weather, search, finance, docs, and knowledge graphs. The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
+> v5 ships with 8 real providers across weather, search, finance, docs, and knowledge graphs. The categories above are what the architecture already supports -- contributors can add providers for any of them by writing a JSON manifest and an HTTP endpoint. See [Contributing](#contributing).
 
 **Where this is headed:**
 - An agent asks: *"I need current stock data with citations under 500ms"* -- the marketplace finds the best provider, executes it, validates the citations, and delivers verified data
@@ -112,27 +112,29 @@ The marketplace is designed to be the **connective layer for an AI-powered ecosy
 
 - **Open Marketplace** -- Anyone can publish products (APIs, datasets, bots, model endpoints) via JSON manifests
 - **AI-Native Discovery** -- Agents shop for products using natural language; capabilities are inferred automatically
-- **Weighted Ranking** -- Scores products using capability match (70%), latency (20%), and cost (10%) with hard constraint filtering
+- **Weighted Ranking** -- Scores products using capability match, latency, cost, trust, and relevance (weights configurable in `.env`)
 - **Output Validation** -- Enforces citation requirements and provenance timestamps on every execution
-- **Evidence Quality Assessment** -- Deterministic (no LLM) quality scoring prevents agents from trusting mock/fake data
 - **Execution Receipts** -- Immutable audit log of every transaction between agents and providers
+- **Provider Trust Scores** -- Success rate, citation compliance, and latency percentiles feed trust scoring
+- **Relevance Scoring** -- TF‑IDF similarity between the task and app metadata improves matches
+- **Strict Routing Thresholds** -- Enforces minimum relevance/coverage/score to prevent weak matches
+- **Manifest Schema Validation** -- Provider manifests are validated on load and publish
 - **Multi-Provider Competition** -- Multiple providers can offer the same capability; the best one wins at runtime
-- **Graceful Abstention** -- When evidence is insufficient, agents abstain instead of hallucinating
-- **LLM Capability Inference** -- Extracts required capabilities from natural language via Ollama (LLM-only, no keyword heuristics)
+- **LLM Capability Inference** -- Extracts required capabilities from natural language via Ollama (LLM + light heuristics)
 - **Local-First** -- Uses Ollama for local model inference; no paid API keys required
 - **Idempotent Publishing** -- Manifest-based product registration, safe to retry
 
 ---
 
-## What's New in v4 (Feb 2026)
+## What's New in v5 (Feb 2026)
 
-- **Sales agent top-3** -- An LLM produces the top 3 recommendations with rationale + tradeoff
-- **Client agent selection** -- The client LLM chooses among the top 3 before execution
-- **Robust sales-agent parsing** -- Strict JSON handling with allowed app-id enforcement
-- **New providers** -- Wikidata entity search + Wikipedia dumps added (no keys)
-- **Provider cleanup** -- Numbers & Math Facts removed
-- **Recommendation completeness** -- Rationale/tradeoff now always present (derived from router signals when missing)
-- **Client visibility** -- `/shop` errors surface with clear codes in `client_llm`
+- **Sales-agent model benchmarking** -- Local timing comparison table for small vs large models
+- **Provider + shop caching** -- Short TTL caching improves repeated-query latency
+- **Reliability improvements** -- Sales-agent JSON strictness + fallback repairs
+- **Relevance scoring** -- TF‑IDF similarity added to ranking
+- **Capability tagging fixes** -- `books` + `population` tags for better routing
+- **Wikidata stability** -- User-Agent added to reduce 403s
+- **CLI visibility** -- `/shop` errors surface with clear codes in CLI output
 
 ---
 
@@ -169,7 +171,7 @@ User / LLM Client
 2. Capabilities are inferred (LLM + heuristics) or specified manually
 3. Router ranks registered apps against constraints
 4. Top app is executed via its `executor_url`
-5. Output is validated (citations, timestamps) and quality-assessed
+5. Output is validated (citations, timestamps)
 6. A receipt is logged to SQLite regardless of outcome
 
 ---
@@ -182,7 +184,7 @@ User / LLM Client
 | Database | SQLite + SQLAlchemy 2.0 | App catalog and run receipts |
 | Data Validation | Pydantic v2 | Request/response schemas |
 | CLI | Typer + Rich | Terminal interface with formatted output |
-| LLM Integration | Ollama (qwen2.5:14b-instruct) | Capability extraction and answer generation |
+| LLM Integration | Ollama (phi3.5:3.8b) | Capability extraction and sales-agent recommendations |
 | HTTP Client | Requests | Provider execution |
 | Language | Python 3.10+ | Runtime |
 
@@ -202,7 +204,6 @@ No paid APIs are required. All LLM inference runs locally through Ollama.
 │       ├── __init__.py
 │       ├── settings.py                # Centralized configuration (env vars)
 │       ├── cli.py                      # CLI commands: apps, shop, publish, runs
-│       ├── client_llm.py              # End-to-end LLM client simulation
 │       ├── core/
 │       │   ├── cap_extractor.py       # Capability inference (LLM + heuristics)
 │       │   ├── evidence_quality.py    # Deterministic quality assessment
@@ -252,13 +253,13 @@ Before setting up the project, ensure you have the following installed:
    python3 --version
    ```
 
-2. **Ollama** (for LLM features: capability extraction, answer generation)
+2. **Ollama** (for LLM features: capability extraction, sales-agent recommendations)
    ```bash
    # Install Ollama: https://ollama.ai
    # Then pull the required model:
-   ollama pull qwen2.5:14b-instruct
-   ```
-   > Ollama is optional if you only use manual capability tags (skip `--auto-caps`). It is required for the client LLM simulation and auto-capability inference.
+   ollama pull phi3.5:3.8b
+```
+   > Ollama is required for `/shop` (sales-agent recommendations) and `--auto-caps` inference. You can still list apps and query receipts without it.
 
 3. **Git** (for cloning and contributing)
 
@@ -336,6 +337,8 @@ python -m marketplace.cli shop \
   --citations
 ```
 
+**Note:** `shop` requires a task string. If you run it without a task, it will exit with a usage hint.
+
 **Flags:**
 | Flag | Description |
 |------|-------------|
@@ -362,6 +365,19 @@ python -m marketplace.cli shop \
 
 ```bash
 python -m marketplace.cli runs --n 10
+```
+
+### Fetch a full receipt by run_id
+
+```bash
+python -m marketplace.cli run 1
+```
+
+### View trust scores
+
+```bash
+python -m marketplace.cli trust
+python -m marketplace.cli trust exchange_rates
 ```
 
 ---
@@ -413,6 +429,7 @@ python -m marketplace.cli publish manifests/realtime_weather_agent.json
 ```
 
 Publishing is idempotent -- running it again updates the existing listing.
+Manifests are schema-validated on load and publish; invalid manifests are rejected with clear errors.
 
 ### 3. Verify the listing
 
@@ -422,25 +439,98 @@ python -m marketplace.cli apps
 
 ---
 
-## Client LLM Simulation
+## CLI End-to-End Example
 
-The client LLM script demonstrates the full end-to-end pipeline: an LLM shops the marketplace, the sales agent returns the top 3 with tradeoffs, the client LLM chooses among them, executes a tool, assesses evidence quality, and either answers with grounded citations or abstains.
+This CLI run demonstrates the full pipeline: capability inference, marketplace ranking, and execution of the top recommendation.
 
 ```bash
-python -m marketplace.client_llm "What is the currency rate of usd to eur? Cite sources."
+python -m marketplace.cli shop \
+  "What is the currency rate of usd to eur? Cite sources." \
+  --auto-caps --citations --execute-top
 ```
 
-**Pipeline steps:**
-1. Infer capabilities from the natural language question
-2. Shop the marketplace with inferred constraints
-3. Sales agent returns the top 3 with rationale + tradeoff
-4. Client agent chooses the final app among the top 3
-5. Execute the chosen tool
-6. Assess evidence quality (deterministic: HIGH / MEDIUM / LOW)
-7. If **HIGH**: generate a grounded answer constrained to provided evidence
-8. If **LOW**: abstain deterministically (no hallucination)
+**Output:**
 
-> Requires Ollama running with `qwen2.5:14b-instruct` pulled.
+```
+Auto capabilities: ['finance', 'citations']
+Status: OK
+Determine the currency rate of USD to EUR.
+                 Top Recommendations                 
+┏━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ # ┃ app_id         ┃ name                 ┃ score ┃
+┡━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│ 1 │ exchange_rates │ Exchange Rate Lookup │ 0.752 │
+└───┴────────────────┴──────────────────────┴───────┘
+
+Recommendation 1: Exchange Rate Lookup (exchange_rates)
+ - Capability match: 1.00 (covers ['citations', 'finance'])
+ - Supports citations/provenance: yes
+ - Trust score: 0.85
+ - Relevance score: 0.10
+ - Estimated latency: 500ms
+Rationale: This app supports finance and real-time capabilities with citations, aligning perfectly for the task.
+Tradeoff: Real-time data may not always be 100% accurate due to market fluctuations.
+
+Execution result:
+ok=True
+Provenance:
+{'sources': ['https://open.er-api.com/v6/latest/USD'], 'retrieved_at': '2026-02-05T19:35:00.028505+00:00', 'notes': []}
+Output:
+{'answer': 'Exchange rates for 1 USD: EUR: 0.84687. Last updated: Thu, 05 Feb 2026 00:02:31 +0000.', 'citations': ['https://open.er-api.com/v6/latest/USD'], 'retrieved_at': '2026-02-05T19:35:00.028505+00:00', 'quality': 'verified'}
+```
+
+### Strict Routing Examples (Real vs Fake)
+
+**Real query (should succeed):**
+
+```bash
+python -m marketplace.cli shop \
+  "What is the weather in Indianapolis right now? Cite sources." \
+  --auto-caps --freshness realtime --citations --execute-top
+```
+
+```
+Auto capabilities: ['weather', 'realtime', 'citations']
+Status: OK
+Current weather in Indianapolis query.
+                       Top Recommendations
+┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ # ┃ app_id                 ┃ name                      ┃ score ┃
+┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│ 1 │ realtime_weather_agent │ Realtime Weather Agent v2 │ 0.751 │
+└───┴────────────────────────┴───────────────────────────┴───────┘
+
+Recommendation 1: Realtime Weather Agent v2 (realtime_weather_agent)
+ - Capability match: 1.00 (covers ['citations', 'realtime', 'weather'])
+ - Freshness matches requirement: realtime
+ - Supports citations/provenance: yes
+ - Trust score: 0.83
+ - Relevance score: 0.20
+Rationale: App supports required capabilities and provides real-time weather information.
+Tradeoff: Estimated latency: 800ms; Estimated cost: $0.0000
+
+Execution result:
+ok=True
+Provenance:
+{'sources': ['https://open-meteo.com/'], 'retrieved_at': '2026-02-05T19:35:33.024257+00:00', 'notes': []}
+Output:
+{'answer': 'At 2026-02-05T14:30, temperature is -5.8 C, weather_code=3, wind_speed=11.1 km/h (Open-Meteo).', 'citations': ['https://open-meteo.com/'], 'retrieved_at': '2026-02-05T19:35:33.024257+00:00', 'quality': 'verified'}
+```
+
+**Fake query (should return NO_MATCH):**
+
+```bash
+python -m marketplace.cli shop \
+  "Translate this sentence to Spanish: hello world. Cite sources." \
+  --auto-caps --citations --execute-top
+```
+
+```
+Auto capabilities: ['translate', 'citations']
+Status: NO_MATCH
+No apps met minimum capability coverage (1.00).
+No recommendations.
+```
 
 ---
 
@@ -458,6 +548,9 @@ All endpoints are available at `http://127.0.0.1:8000`. Full interactive documen
 | `POST` | `/shop` | Get ranked recommendations for a task |
 | `POST` | `/execute` | Execute an app, validate output, log receipt |
 | `GET` | `/runs` | List recent execution receipts (limit 50) |
+| `GET` | `/runs/{run_id}` | Fetch a full execution receipt (including output) |
+| `GET` | `/trust` | List trust scores for all apps |
+| `GET` | `/apps/{app_id}/trust` | Trust score + performance stats for one app |
 | `GET` | `/providers/openmeteo_weather?lat=&lon=` | Open-Meteo weather (free, no API key) |
 | `GET` | `/providers/wikipedia?q={title}` | Wikipedia summary (free, no API key) |
 | `GET` | `/providers/restcountries?q={name}` | Country info -- capital, population, languages (free) |
@@ -514,6 +607,9 @@ The router scores apps using weighted criteria:
 | 70% | Capability Match | Coverage ratio of required vs. available capabilities |
 | 20% | Latency | Penalizes high latency with a soft curve |
 | 10% | Cost | Prefers cheaper without over-penalizing |
+| 15% | Trust Score | Success rate, citation pass rate, and latency percentile |
+
+Weights are normalized by the total, so you can adjust `W_TRUST` without breaking the score scale.
 
 **Hard filters** (apps are excluded if they fail any):
 - Freshness mismatch
@@ -549,6 +645,20 @@ Every execution (success or failure) is logged to the `runs` table:
 - Validation errors (if any)
 - Actual latency in milliseconds
 - Timestamp
+ 
+`/execute` now returns a `run_id` so clients can fetch the full receipt with `GET /runs/{run_id}`.
+
+### Trust Scores
+
+Each provider gets a trust score derived from real executions:
+
+- **Success rate** (ok / total)
+- **Citation pass rate** (ok when citations are required)
+- **Latency score** (lower latency = higher score)
+
+Scores are combined into a `trust_score` used in ranking (see `W_TRUST`). You can query:
+- `GET /trust` for all apps
+- `GET /apps/{app_id}/trust` for one app
 
 ---
 
@@ -564,14 +674,52 @@ cp .env.example .env
 | Env Variable | Default Value | Description |
 |-------------|--------------|-------------|
 | `DATABASE_URL` | `sqlite:///./marketplace.db` | SQLAlchemy database URL |
-| `API_BASE_URL` | `http://127.0.0.1:8000` | API server URL (used by CLI and client) |
+| `API_BASE_URL` | `http://127.0.0.1:8000` | API server URL (used by CLI) |
 | `OLLAMA_URL` | `http://localhost:11434/api/generate` | Ollama inference endpoint |
-| `OLLAMA_TIMEOUT` | `30` | Ollama request timeout in seconds |
-| `ROUTER_MODEL` | `qwen2.5:14b-instruct` | Model for capability extraction |
-| `ANSWER_MODEL` | `qwen2.5:14b-instruct` | Model for grounded answer generation |
+| `OLLAMA_TIMEOUT` | `60` | Ollama request timeout in seconds |
+| `ROUTER_MODEL` | `phi3.5:3.8b` | Model for capability extraction |
+| `ANSWER_MODEL` | `phi3.5:3.8b` | Reserved for grounded answer generation (not wired yet) |
+| `SALES_AGENT_MODEL` | `phi3.5:3.8b` | Model for sales-agent ranking (smaller = faster) |
+| `SALES_AGENT_TIMEOUT` | `60` | Sales agent request timeout in seconds |
 | `W_CAP` | `0.70` | Router weight: capability match |
 | `W_LAT` | `0.20` | Router weight: latency |
 | `W_COST` | `0.10` | Router weight: cost |
+| `W_TRUST` | `0.15` | Router weight: trust score |
+| `W_REL` | `0.25` | Router weight: relevance (TF‑IDF similarity) |
+| `MIN_CAP_COVERAGE` | `1.0` | Minimum required capability coverage (1.0 = all required caps) |
+| `MIN_RELEVANCE_SCORE` | `0.08` | Minimum relevance score when no caps are provided |
+| `MIN_TOTAL_SCORE` | `0.55` | Minimum overall score for the top candidate |
+| `SALES_AGENT_TOP_K` | `8` | Max candidates passed to the sales agent |
+| `SHOP_CACHE_TTL_SECONDS` | `30` | Cache TTL for `/shop` responses |
+| `PROVIDER_CACHE_TTL_WEATHER` | `30` | Cache TTL for weather provider |
+| `PROVIDER_CACHE_TTL_FX` | `60` | Cache TTL for exchange-rate provider |
+| `PROVIDER_CACHE_TTL_WIKI` | `3600` | Cache TTL for Wikipedia summary provider |
+| `PROVIDER_CACHE_TTL_WIKIDATA` | `3600` | Cache TTL for Wikidata provider |
+| `PROVIDER_CACHE_TTL_WIKIDUMPS` | `3600` | Cache TTL for Wikipedia dumps provider |
+| `PROVIDER_CACHE_TTL_RESTCOUNTRIES` | `3600` | Cache TTL for REST Countries provider |
+| `PROVIDER_CACHE_TTL_OPENLIB` | `3600` | Cache TTL for Open Library provider |
+| `PROVIDER_CACHE_TTL_DICTIONARY` | `86400` | Cache TTL for Dictionary provider |
+
+Performance tuning tips:
+- Use a smaller `SALES_AGENT_MODEL` to speed up the top-3 ranking step.
+- Tune cache TTLs to trade freshness for speed (realtime apps should stay low).
+ - If you get frequent `NO_MATCH`, either pass explicit `--caps` or relax `MIN_CAP_COVERAGE` / `MIN_RELEVANCE_SCORE`.
+
+## Sales-Agent Model Timing Comparison (Local Benchmark)
+
+End-to-end timings for `python -m marketplace.cli shop ... --execute-top` on a local machine.
+Same queries, same API server, only the sales-agent model changed.
+
+| Query | Small Model (s) | Large Model (s) | Delta (Large - Small) |
+|---|---:|---:|---:|
+| Weather Indianapolis | 18.15 | 22.70 | +4.55 |
+| USD to EUR | 19.19 | 44.98 | +25.79 |
+| What is Python | 21.80 | 46.92 | +25.12 |
+| France population | 18.79 | 48.28 | +29.49 |
+| Define serendipity | 19.13 | 27.22 | +8.09 |
+| Books about Python | 19.36 | 47.46 | +28.10 |
+| Wikidata entity | 20.93 | 48.71 | +27.78 |
+| Wikipedia dump | 17.56 | 27.91 | +10.35 |
 
 ---
 
@@ -624,30 +772,22 @@ $ python -m marketplace.cli shop \
 
 Auto capabilities: ['realtime', 'weather', 'citations']
 Status: OK
-Client requires real-time weather data with citations for Indianapolis; two candidates match.
+Client requires real-time weather data with citations for Indianapolis; one candidate matches.
                        Top Recommendations
 ┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
 ┃ # ┃ app_id                 ┃ name                      ┃ score ┃
 ┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
 │ 1 │ realtime_weather_agent │ Realtime Weather Agent v2 │ 0.877 │
-│ 2 │ exchange_rates         │ Exchange Rate Lookup      │   0.9 │
 └───┴────────────────────────┴───────────────────────────┴───────┘
 
 Recommendation 1: Realtime Weather Agent v2 (realtime_weather_agent)
- - No required_capabilities specified; not penalized on capability coverage.
+ - Capability match: 1.00 (covers ['citations', 'realtime', 'weather'])
  - Freshness matches requirement: realtime
  - Supports citations/provenance: yes
- - Estimated latency: 800ms
- - Estimated cost: $0.0000
-Rationale: Directly matches weather and real-time requirements with citations.
-Tradeoff: Slight higher latency compared to the exchange rates app.
-
-Recommendation 2: Exchange Rate Lookup (exchange_rates)
- - No required_capabilities specified; not penalized on capability coverage.
- - Freshness matches requirement: realtime
- - Supports citations/provenance: yes
- - Estimated latency: 500ms
- - Estimated cost: $0.0000
+ - Trust score: 0.50
+ - Relevance score: 0.10
+Rationale: Capability match plus freshness and citations satisfy the request.
+Tradeoff: Estimated latency: 800ms; Estimated cost: $0.0000
 ```
 
 **What happened:** The LLM inferred `['realtime', 'weather', 'citations']`. The sales agent selected the weather provider and returned the recommendation rationale.
@@ -699,161 +839,50 @@ $ python -m marketplace.cli runs --n 5
 └────┴────────────────────────┴───────┴────────────┴──────────────────────────────────┘
 ```
 
-### Step 7: Full client LLM simulation (end-to-end)
-
-This runs the complete pipeline: LLM asks a question, shops the marketplace, executes a tool, assesses evidence quality, and generates a grounded answer (or abstains).
+To fetch a full receipt (including output JSON), use:
 
 ```bash
-$ python -m marketplace.client_llm \
-    "What is the currency rate of usd to eur? Cite sources."
+curl http://127.0.0.1:8000/runs/4
+```
+
+### Step 7: End-to-End CLI run
+
+This runs the complete pipeline: the LLM infers capabilities, the marketplace ranks apps, and the top recommendation is executed.
+
+```bash
+$ python -m marketplace.cli shop \
+    "What is the currency rate of usd to eur? Cite sources." \
+    --auto-caps --citations --execute-top
 ```
 
 **Output:**
 
 ```
-╭──────────────────────────── Client LLM ────────────────────────────╮
-│ Question                                                           │
-│ What is the currency rate of usd to eur? Cite sources.             │
-│                                                                    │
-│ Inferred caps                                                      │
-│ ['finance', 'citations']                                           │
-╰────────────────────────────────────────────────────────────────────╯
-```
+Auto capabilities: ['finance', 'citations']
+Status: OK
+Currency rate of USD to EUR search task with citations.
+                       Top Recommendations
+┏━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┓
+┃ # ┃ app_id         ┃ name                      ┃ score ┃
+┡━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━┩
+│ 1 │ exchange_rates │ Exchange Rate Lookup      │ 0.751 │
+└───┴────────────────┴───────────────────────────┴───────┘
 
-The LLM extracted capability tags from the natural language question.
+Recommendation 1: Exchange Rate Lookup (exchange_rates)
+ - Capability match: 1.00 (covers ['citations', 'finance'])
+ - Supports citations/provenance: yes
+ - Trust score: 0.84
+ - Relevance score: 0.10
+ - Estimated latency: 500ms
+Rationale: Provides real-time finance data, including exchange rates between currencies and supports necessary citations for the task.
+Tradeoff: Estimated latency: 500ms; Estimated cost: $0.0000
 
-```
-╭──────────────────── Marketplace /shop response ────────────────────╮
-│ {                                                                  │
-│   "status": "OK",                                                  │
-│   "recommendations": [                                             │
-│     {                                                              │
-│       "app_id": "exchange_rates",                                  │
-│       "name": "Exchange Rate Lookup",                              │
-│       "score": 0.9,                                                │
-│       "why": [                                                     │
-│         "No required_capabilities specified; not penalized on      │
-│ capability coverage.",                                             │
-│         "Supports citations/provenance: yes",                      │
-│         "Estimated latency: 500ms",                                │
-│         "Estimated cost: $0.0000"                                  │
-│       ],                                                           │
-│       "rationale": "Provides real-time finance data including      │
-│ currency exchange rates, supported by recent citation             │
-│ capabilities and daily freshness.",                                │
-│       "tradeoff": "Estimated latency: 500ms; Estimated cost:       │
-│ $0.0000"                                                           │
-│     }                                                              │
-│   ],                                                               │
-│   "explanation": [                                                 │
-│     "Currency rate of USD to EUR with citations."                  │
-│   ],                                                               │
-│   "sales_agent": {                                                 │
-│     "summary": "Currency rate of USD to EUR with citations.",      │
-│     "final_choice": "exchange_rates",                              │
-│     "recommendations": [                                           │
-│       {                                                            │
-│         "app_id": "exchange_rates",                                │
-│         "rationale": "Provides real-time finance data including    │
-│ currency exchange rates, supported by recent citation             │
-│ capabilities and daily freshness.",                                │
-│         "tradeoff": "Estimated latency: 500ms; Estimated cost:     │
-│ $0.0000"                                                           │
-│       }                                                            │
-│     ]                                                              │
-│   }                                                                │
-│ }                                                                  │
-╰────────────────────────────────────────────────────────────────────╯
-```
-
-The sales agent produced the Top‑3 with tradeoffs, and the client agent selected the final choice.
-
-```
-╭────────────── Chosen recommendation (client agent) ────────────────╮
-│ {                                                                  │
-│   "choice": {                                                      │
-│     "app_id": "exchange_rates",                                    │
-│     "reason": "This app directly matches the finance capability    │
-│ needed for real-time exchange rate data and supports citations."   │
-│   },                                                               │
-│   "picked": {                                                      │
-│     "app_id": "exchange_rates",                                    │
-│     "name": "Exchange Rate Lookup",                                │
-│     "score": 0.9,                                                  │
-│     "why": [                                                       │
-│       "No required_capabilities specified; not penalized on        │
-│ capability coverage.",                                             │
-│       "Supports citations/provenance: yes",                        │
-│       "Estimated latency: 500ms",                                  │
-│       "Estimated cost: $0.0000"                                    │
-│     ],                                                             │
-│     "rationale": "Directly matches finance capability and provides │
-│ real-time data, which is essential for current exchange rates.",   │
-│     "tradeoff": "Slight delay in latency compared to static        │
-│ sources."                                                          │
-│   }                                                                │
-│ }                                                                  │
-╰────────────────────────────────────────────────────────────────────╯
-```
-
-```
-╭────────────────── Marketplace /execute response ───────────────────╮
-│ {                                                                  │
-│   "app_id": "exchange_rates",                                      │
-│   "ok": true,                                                      │
-│   "output": {                                                      │
-│     "answer": "Exchange rates for 1 USD: EUR: 0.84687. Last        │
-│ updated: Thu, 05 Feb 2026 00:02:31 +0000.",                        │
-│     "citations": ["https://open.er-api.com/v6/latest/USD"],        │
-│     "retrieved_at": "2026-02-05T02:20:27.610761+00:00",            │
-│     "quality": "verified"                                          │
-│   },                                                               │
-│   "provenance": {                                                  │
-│     "sources": ["https://open.er-api.com/v6/latest/USD"],          │
-│     "retrieved_at": "2026-02-05T02:20:27.610761+00:00",            │
-│     "notes": []                                                    │
-│   },                                                               │
-│   "validation_errors": []                                          │
-│ }                                                                  │
-╰────────────────────────────────────────────────────────────────────╯
-```
-
-```
-╭──────────────────────── Evidence Quality ──────────────────────────╮
-│ {                                                                  │
-│   "quality": "HIGH",                                               │
-│   "reasons": [                                                     │
-│     "Evidence appears non-mock and contains citations."            │
-│   ]                                                                │
-│ }                                                                  │
-╰────────────────────────────────────────────────────────────────────╯
-```
-
-```
-╭───────────────────── Final Answer (Grounded) ──────────────────────╮
-│ According to the provided evidence, the exchange rate for 1 USD to │
-│ EUR is 0.84687 as of Thu, 05 Feb 2026 00:02:31 +0000.              │
-│                                                                    │
-│ Sources: https://open.er-api.com/v6/latest/USD                     │
-╰────────────────────────────────────────────────────────────────────╯
-```
-
-### What happens with mock/low-quality evidence
-
-If a provider returns mock/test data or data marked as low quality, the pipeline detects it and **abstains** instead of answering:
-
-```
-╭──────────────────────── Evidence Quality ──────────────────────────╮
-│ {                                                                  │
-│   "quality": "LOW",                                                │
-│   "reasons": ["Provider marked quality=mock."]                     │
-│ }                                                                  │
-╰────────────────────────────────────────────────────────────────────╯
-╭──────────────────── Final Answer (Abstain) ────────────────────────╮
-│ I don't have reliable evidence to answer this accurately.          │
-│ Here is the evidence returned (may be mock/test) and its           │
-│ citation(s).                                                       │
-╰────────────────────────────────────────────────────────────────────╯
+Execution result:
+ok=True
+Provenance:
+{'sources': ['https://open.er-api.com/v6/latest/USD'], 'retrieved_at': '2026-02-05T19:12:42.713038+00:00', 'notes': []}
+Output:
+{'answer': 'Exchange rates for 1 USD: EUR: 0.84687. Last updated: Thu, 05 Feb 2026 00:02:31 +0000.', 'citations': ['https://open.er-api.com/v6/latest/USD'], 'retrieved_at': '2026-02-05T19:12:42.713038+00:00', 'quality': 'verified'}
 ```
 
 ### What happens when validation fails
@@ -878,12 +907,10 @@ If citations are required but the provider does not return them, the execution i
 | Step | Component | What happens | Decision point |
 |------|-----------|-------------|----------------|
 | 1 | `cap_extractor` | LLM + heuristics infer capabilities from natural language | -- |
-| 2 | `router` | Rank apps by capability (70%), latency (20%), cost (10%) with hard filters | NO_MATCH if nothing passes filters |
+| 2 | `router` | Rank apps by capability, latency, cost, trust, and relevance (hard filters plus minimum coverage/relevance/score thresholds) | NO_MATCH if nothing passes filters |
 | 3 | Execute | Call provider's `executor_url`, get JSON response | Fail if provider unreachable |
 | 4 | `validate` | Check citations list and `retrieved_at` timestamp | `ok=false` if validation fails |
-| 5 | `evidence_quality` | Deterministic check: is data mock/simulated/fake? | -- |
-| 6 | Answer/Abstain | If HIGH: LLM generates grounded answer. If LOW: abstain. | Prevents hallucination |
-| 7 | `runs` table | Log receipt (app_id, task, ok, latency, errors, timestamp) | Always logged |
+| 5 | `runs` table | Log receipt (app_id, task, ok, latency, errors, timestamp) | Always logged |
 
 ---
 
@@ -894,26 +921,27 @@ If citations are required but the provider does not return them, the execution i
 - [x] ~~Replace mock providers with 8 real free-API providers~~
 - [x] ~~Auto-bootstrap manifests on startup~~
 - [x] ~~Fix execute pipeline (forward inputs to providers)~~
-- [x] ~~Anti-hallucination grounded answers with evidence quality checks~~
+- [ ] **Evidence-quality + grounded answers** -- Reintroduce deterministic evidence scoring and grounded response generation when citations are strong
 - [ ] **Manifest hosting** -- Migrate manifests from local JSON files to MongoDB (or PostgreSQL) so providers can be registered, discovered, and managed remotely. This enables real-world deployment where multiple instances share a central registry.
 - [ ] **Cloud deployment** -- Dockerize the API and deploy to a cloud provider (AWS/GCP/Railway) with a persistent database, making the marketplace accessible for real-world integration testing.
 - [ ] **Improved LLM support** -- Support larger models (Mistral, Llama 3, GPT-4o) via configurable model backends. Add model benchmarking to compare grounding accuracy across model sizes.
 - [ ] **Structured input extraction** -- Use the LLM to extract structured query parameters from natural language (e.g., "weather in Tokyo" -> `{"lat": 35.68, "lon": 139.69}`) instead of passing empty inputs.
 - [ ] **Multi-tool plans** -- Let the LLM chain multiple providers in sequence (e.g., search country -> get exchange rate for that country's currency).
-- [ ] **Trust scores per provider** -- Track failure rate, latency percentiles, and citation compliance over time. Use scores to improve routing.
+- [x] ~~Trust scores per provider~~ -- Track failure rate, latency percentiles, and citation compliance over time. Use scores to improve routing.
 - [ ] **Authentication and API keys** -- Add API key gating so third-party providers can register securely.
 - [ ] **Manifest validation** -- JSON schema + allowlist enforcement for provider registration.
 
 ---
 
-## v4 Changes
+## v5 Changes
 
-- **Sales agent top-3** recommendations with structured rationale + tradeoff
-- **Client agent selection** before execution
-- **LLM-only capability inference** (no keyword heuristics)
-- **Provider set expanded to 8 free sources** (no paid APIs)
-- **Wikidata + Wikipedia dumps** added
-- **Numbers & Math Facts** removed
+- **Sales-agent benchmarking** table (small vs large model timing)
+- **Provider + shop response caching** for faster repeated runs
+- **Capability tag fixes** for books + population queries
+- **Sales-agent JSON reliability** improvements
+- **Provider set remains 8 free sources** (no paid APIs)
+- **Trust scores + audit receipts** (run_id + /runs/{id} detail)
+- **Manifest schema validation** on bootstrap and publish
 ---
 
 ## Contributing

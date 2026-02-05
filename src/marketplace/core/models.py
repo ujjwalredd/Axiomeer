@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Literal, Optional
 
 
@@ -27,6 +27,7 @@ class Recommendation(BaseModel):
     why: List[str] = Field(default_factory=list)
     rationale: str | None = None
     tradeoff: str | None = None
+    trust_score: float | None = None
 
 class SalesAgentRecommendation(BaseModel):
     app_id: str
@@ -60,6 +61,26 @@ class AppCreate(BaseModel):
     executor_type: Literal["http_api"] = "http_api"
     executor_url: str = Field(default="", max_length=2000)
 
+    @field_validator("capabilities", mode="before")
+    @classmethod
+    def normalize_capabilities(cls, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("capabilities must be a list of strings")
+        cleaned: list[str] = []
+        seen = set()
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError("capabilities must be a list of strings")
+            cap = item.strip().lower()
+            if not cap:
+                continue
+            if cap not in seen:
+                seen.add(cap)
+                cleaned.append(cap)
+        return cleaned
+
 class AppOut(AppCreate):
     pass
 
@@ -82,6 +103,7 @@ class ExecuteResponse(BaseModel):
     output: dict | None = None
     provenance: Provenance | None = None
     validation_errors: List[str] = Field(default_factory=list)
+    run_id: int | None = None
 
 class RunOut(BaseModel):
     id: int
@@ -93,6 +115,29 @@ class RunOut(BaseModel):
     created_at: str
     validation_errors: list[str]
     client_id: Optional[str] = None
+
+class RunDetailOut(BaseModel):
+    id: int
+    app_id: str
+    task: str
+    require_citations: bool
+    ok: bool
+    latency_ms: int
+    created_at: str
+    validation_errors: list[str]
+    client_id: Optional[str] = None
+    output: dict | None = None
+
+class TrustOut(BaseModel):
+    app_id: str
+    total_runs: int
+    success_rate: float
+    citation_pass_rate: float
+    avg_latency_ms: int | None = None
+    p95_latency_ms: int | None = None
+    last_run_at: str | None = None
+    trust_score: float
+    insufficient_data: bool = False
 
 class MessageIn(BaseModel):
     client_id: str = Field(min_length=1, max_length=200)
