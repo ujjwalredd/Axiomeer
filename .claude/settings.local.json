@@ -9,7 +9,16 @@
       "Bash(PYTHONPATH=src python:*)",
       "Bash(xargs:*)",
       "Bash(find:*)",
-      "Bash(.venv/bin/python -m pytest:*)"
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(tee:*)",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)",
+      "Bash(source:*)",
+      "Bash(pandoc:*)",
+      "Bash(pdfinfo:*)"
     ]
   }
 }

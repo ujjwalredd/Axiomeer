@@ -96,7 +96,7 @@ class TestRecommend:
             required_capabilities=["weather"],
             constraints=Constraints(citations_required=False),
         )
-        recs, explanation = recommend(req, SAMPLE_APPS, k=3)
+        recs, explanation, metrics = recommend(req, SAMPLE_APPS, k=3)
         assert len(recs) >= 1
         assert all(r.score >= 0.0 and r.score <= 1.0 for r in recs)
 
@@ -106,7 +106,7 @@ class TestRecommend:
             required_capabilities=["weather"],
             constraints=Constraints(freshness="realtime", citations_required=False),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=3)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=3)
         assert all(r.app_id != "weather_static" for r in recs)
 
     def test_citations_filter(self):
@@ -115,7 +115,7 @@ class TestRecommend:
             required_capabilities=["weather"],
             constraints=Constraints(citations_required=True),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=3)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=3)
         assert all(r.app_id != "weather_static" for r in recs)
 
     def test_latency_filter(self):
@@ -124,7 +124,7 @@ class TestRecommend:
             required_capabilities=["weather"],
             constraints=Constraints(citations_required=False, max_latency_ms=200),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=3)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=3)
         assert all(r.app_id != "weather_rt" for r in recs)
 
     def test_cost_filter(self):
@@ -133,7 +133,7 @@ class TestRecommend:
             required_capabilities=["finance"],
             constraints=Constraints(citations_required=False, max_cost_usd=0.001),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=3)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=3)
         assert all(r.app_id != "finance_rt" for r in recs)
 
     def test_no_match_returns_empty(self):
@@ -143,7 +143,7 @@ class TestRecommend:
             required_capabilities=["translate"],
             constraints=Constraints(freshness="realtime", citations_required=True),
         )
-        recs, reasons = recommend(req, SAMPLE_APPS, k=3)
+        recs, reasons, _ = recommend(req, SAMPLE_APPS, k=3)
         assert recs == []
 
     def test_top_k_limit(self):
@@ -152,7 +152,7 @@ class TestRecommend:
             required_capabilities=[],
             constraints=Constraints(citations_required=False),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=1)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=1)
         assert len(recs) == 1
 
     def test_weather_rt_ranked_first_for_weather_realtime(self):
@@ -161,5 +161,5 @@ class TestRecommend:
             required_capabilities=["weather", "realtime"],
             constraints=Constraints(citations_required=True, freshness="realtime"),
         )
-        recs, _ = recommend(req, SAMPLE_APPS, k=3)
+        recs, _, _ = recommend(req, SAMPLE_APPS, k=3)
         assert recs[0].app_id == "weather_rt"

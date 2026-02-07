@@ -1,0 +1,25 @@
+{
+  "id": "census_demographics",
+  "name": "US Census Demographics",
+  "description": "US population, demographics, and economic data from Census Bureau",
+  "category": "government_data",
+  "subcategory": "demographics",
+  "tags": [
+    "census",
+    "demographics",
+    "population",
+    "usa"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 700,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/census/demographics"
+}

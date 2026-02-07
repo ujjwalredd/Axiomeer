@@ -1,0 +1,25 @@
+{
+  "id": "uk_police_data",
+  "name": "UK Police Crime Data",
+  "description": "Crime statistics by location in the UK",
+  "category": "government_data",
+  "subcategory": "crime",
+  "tags": [
+    "uk",
+    "police",
+    "crime",
+    "statistics"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 800,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/uk/police_data"
+}

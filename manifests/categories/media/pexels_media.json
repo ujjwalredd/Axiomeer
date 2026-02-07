@@ -1,0 +1,25 @@
+{
+  "id": "pexels_media",
+  "name": "Pexels Photos & Videos",
+  "description": "Free stock photos and videos",
+  "category": "media",
+  "subcategory": "images",
+  "tags": [
+    "photos",
+    "videos",
+    "stock",
+    "pexels"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 700,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/pexels/media"
+}

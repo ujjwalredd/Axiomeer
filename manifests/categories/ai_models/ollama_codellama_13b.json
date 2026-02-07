@@ -1,0 +1,25 @@
+{
+  "id": "ollama_codellama_13b",
+  "name": "CodeLlama 13B (Local)",
+  "description": "Meta's CodeLlama 13B for code generation via Ollama",
+  "category": "ai_models",
+  "subcategory": "local_llm",
+  "tags": [
+    "codellama",
+    "coding",
+    "local",
+    "ollama"
+  ],
+  "capabilities": [
+    "coding",
+    "chat",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": false,
+  "product_type": "model",
+  "latency_est_ms": 4000,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/ollama/codellama_13b"
+}

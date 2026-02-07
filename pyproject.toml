@@ -11,6 +11,9 @@ dependencies = [
   "rich>=13.0",
   "requests>=2.31",
   "python-dotenv>=1.0",
+  "sentence-transformers>=2.2.0",
+  "faiss-cpu>=1.7.4",
+  "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]

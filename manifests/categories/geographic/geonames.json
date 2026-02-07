@@ -1,0 +1,25 @@
+{
+  "id": "geonames",
+  "name": "GeoNames Geographic Database",
+  "description": "11M+ geographic names and locations worldwide",
+  "category": "geographic",
+  "subcategory": "places",
+  "tags": [
+    "geonames",
+    "places",
+    "geography",
+    "locations"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 600,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/geonames/search"
+}

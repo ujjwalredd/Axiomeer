@@ -1,0 +1,25 @@
+{
+  "id": "ollama_deepseek_coder",
+  "name": "Deepseek Coder 6.7B (Local)",
+  "description": "Deepseek Coder for code completion via Ollama",
+  "category": "ai_models",
+  "subcategory": "local_llm",
+  "tags": [
+    "deepseek",
+    "coding",
+    "local",
+    "ollama"
+  ],
+  "capabilities": [
+    "coding",
+    "chat",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": false,
+  "product_type": "model",
+  "latency_est_ms": 3500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/ollama/deepseek_coder"
+}

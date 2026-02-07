@@ -1,0 +1,25 @@
+{
+  "id": "worldbank_indicators",
+  "name": "World Bank Global Indicators",
+  "description": "GDP, poverty, health, education data for 200+ countries",
+  "category": "government_data",
+  "subcategory": "economics",
+  "tags": [
+    "worldbank",
+    "gdp",
+    "economics",
+    "global"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 1200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/worldbank/indicators"
+}

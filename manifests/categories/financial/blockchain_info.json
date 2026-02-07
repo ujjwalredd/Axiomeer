@@ -1,0 +1,25 @@
+{
+  "id": "blockchain_info",
+  "name": "Blockchain.com Bitcoin Data",
+  "description": "Bitcoin blockchain data and statistics",
+  "category": "financial",
+  "subcategory": "crypto",
+  "tags": [
+    "bitcoin",
+    "blockchain",
+    "btc",
+    "crypto"
+  ],
+  "capabilities": [
+    "finance",
+    "realtime",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 700,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/blockchain/info"
+}

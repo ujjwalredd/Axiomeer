@@ -1,0 +1,24 @@
+{
+  "id": "placeholder_images",
+  "name": "Lorem Picsum Image Placeholder",
+  "description": "Random placeholder images for mockups",
+  "category": "utilities",
+  "subcategory": "images",
+  "tags": [
+    "placeholder",
+    "images",
+    "mockup",
+    "lorem"
+  ],
+  "capabilities": [
+    "docs",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "tool",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/placeholder/images"
+}

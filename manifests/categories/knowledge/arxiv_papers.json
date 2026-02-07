@@ -1,0 +1,25 @@
+{
+  "id": "arxiv_papers",
+  "name": "arXiv Scientific Papers",
+  "description": "2M+ scientific papers from arXiv.org",
+  "category": "knowledge",
+  "subcategory": "academic",
+  "tags": [
+    "arxiv",
+    "papers",
+    "research",
+    "academic"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 1200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/arxiv/papers"
+}

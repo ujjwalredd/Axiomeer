@@ -1,0 +1,25 @@
+{
+  "id": "unsplash_photos",
+  "name": "Unsplash Free Photos",
+  "description": "5M+ high-quality free stock photos",
+  "category": "media",
+  "subcategory": "images",
+  "tags": [
+    "photos",
+    "images",
+    "stock",
+    "free"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 600,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/unsplash/photos"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ip_geolocation",
+  "name": "IP Geolocation API",
+  "description": "IP address to location lookup",
+  "category": "geographic",
+  "subcategory": "ip",
+  "tags": [
+    "ip",
+    "geolocation",
+    "location",
+    "lookup"
+  ],
+  "capabilities": [
+    "search",
+    "realtime",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/ip/geolocation"
+}

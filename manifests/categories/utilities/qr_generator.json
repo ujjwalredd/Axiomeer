@@ -1,0 +1,24 @@
+{
+  "id": "qr_generator",
+  "name": "QR Code Generator",
+  "description": "Generate QR codes from text or URLs",
+  "category": "utilities",
+  "subcategory": "tools",
+  "tags": [
+    "qr",
+    "code",
+    "generator",
+    "barcode"
+  ],
+  "capabilities": [
+    "docs",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "tool",
+  "latency_est_ms": 500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/qr/generator"
+}

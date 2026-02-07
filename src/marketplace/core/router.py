@@ -1,8 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Optional
 import math
 import re
+import time
 
 from marketplace.core.models import ShopRequest, Recommendation
 from marketplace.settings import (
@@ -94,13 +95,27 @@ def _cost_score(cost: float, max_cost: float | None) -> float:
 def recommend(
     req: ShopRequest,
     apps: List[dict],
-    k: int = 3
-) -> Tuple[List[Recommendation], List[str]]:
+    k: int = 3,
+    semantic_search_engine: Optional[object] = None
+) -> Tuple[List[Recommendation], List[str], dict]:
     """
     apps: list of dicts with keys:
       id, name, description, capabilities(list[str]), freshness, citations_supported,
       latency_est_ms, cost_est_usd
+
+    Returns:
+      Tuple of (recommendations, explanation, metrics)
     """
+    start_time = time.perf_counter()
+    metrics = {
+        "total_time_ms": 0,
+        "semantic_search_time_ms": 0,
+        "tfidf_time_ms": 0,
+        "scoring_time_ms": 0,
+        "semantic_search_used": False,
+        "semantic_search_available": False,
+    }
+
     required_caps = _norm_capabilities(req.required_capabilities)
     constraints = req.constraints
 
@@ -128,9 +143,41 @@ def recommend(
         filtered.append((a, app_caps))
 
     if not filtered:
-        return [], []
+        metrics["total_time_ms"] = int((time.perf_counter() - start_time) * 1000)
+        return [], [], metrics
 
     # ---- Relevance (text similarity) ----
+    # Try semantic search first, fallback to TF-IDF
+    relevance_scores = [0.0] * len(filtered)
+    semantic_boost = {}
+
+    if semantic_search_engine and hasattr(semantic_search_engine, "is_available"):
+        metrics["semantic_search_available"] = semantic_search_engine.is_available()
+
+        if semantic_search_engine.is_available():
+            try:
+                from marketplace.settings import SEMANTIC_SEARCH_TOP_K, SEMANTIC_SEARCH_TIMEOUT_MS
+
+                sem_results, sem_time_ms = semantic_search_engine.search(
+                    query=req.task,
+                    top_k=SEMANTIC_SEARCH_TOP_K,
+                    timeout_ms=SEMANTIC_SEARCH_TIMEOUT_MS
+                )
+                metrics["semantic_search_time_ms"] = sem_time_ms
+                metrics["semantic_search_used"] = True
+
+                # Create a mapping from app_id to semantic similarity score
+                for result in sem_results:
+                    semantic_boost[result.app_id] = result.similarity_score
+
+            except Exception as e:
+                # Graceful fallback to TF-IDF on any error
+                import logging
+                logging.warning(f"Semantic search failed, falling back to TF-IDF: {e}")
+                metrics["semantic_search_used"] = False
+
+    # Compute TF-IDF scores (always computed as fallback/complement)
+    tfidf_start = time.perf_counter()
     docs = []
     for a, _ in filtered:
         desc = a.get("description", "")
@@ -138,9 +185,24 @@ def recommend(
         caps = " ".join(a.get("capabilities", []))
         docs.append(f"{name} {desc} {caps}".strip())
     task_vec, doc_vecs = _build_tfidf_vectors(req.task, docs)
-    relevance_scores = [_cosine(task_vec, dv) for dv in doc_vecs]
+    tfidf_scores = [_cosine(task_vec, dv) for dv in doc_vecs]
+    metrics["tfidf_time_ms"] = int((time.perf_counter() - tfidf_start) * 1000)
+
+    # Combine semantic and TF-IDF scores
+    for idx, (a, _) in enumerate(filtered):
+        app_id = a.get("id")
+        semantic_score = semantic_boost.get(app_id, 0.0)
+        tfidf_score = tfidf_scores[idx]
+
+        if metrics["semantic_search_used"] and semantic_score > 0:
+            # Weighted combination: 70% semantic, 30% TF-IDF
+            relevance_scores[idx] = 0.7 * semantic_score + 0.3 * tfidf_score
+        else:
+            # Fallback to pure TF-IDF
+            relevance_scores[idx] = tfidf_score
 
     # ---- Score and rank ----
+    scoring_start = time.perf_counter()
     scored: List[tuple[float, dict, list[str]]] = []
     for idx, (a, app_caps) in enumerate(filtered):
         cap = _capability_match(required_caps, app_caps)
@@ -193,14 +255,18 @@ def recommend(
 
         scored.append((score, a, why))
 
+    metrics["scoring_time_ms"] = int((time.perf_counter() - scoring_start) * 1000)
+
     if not scored:
+        metrics["total_time_ms"] = int((time.perf_counter() - start_time) * 1000)
         if required_caps:
-            return [], [f"No apps met minimum capability coverage ({MIN_CAP_COVERAGE:.2f})."]
-        return [], [f"No apps met minimum relevance score ({MIN_RELEVANCE_SCORE:.2f})."]
+            return [], [f"No apps met minimum capability coverage ({MIN_CAP_COVERAGE:.2f})."], metrics
+        return [], [f"No apps met minimum relevance score ({MIN_RELEVANCE_SCORE:.2f})."], metrics
 
     scored.sort(key=lambda t: t[0], reverse=True)
     if scored and scored[0][0] < MIN_TOTAL_SCORE:
-        return [], [f"Top score {scored[0][0]:.2f} below minimum {MIN_TOTAL_SCORE:.2f}."]
+        metrics["total_time_ms"] = int((time.perf_counter() - start_time) * 1000)
+        return [], [f"Top score {scored[0][0]:.2f} below minimum {MIN_TOTAL_SCORE:.2f}."], metrics
     top = scored[:k]
 
     recs = [
@@ -213,4 +279,6 @@ def recommend(
         )
         for score, a, why in top
     ]
-    return recs, []
+
+    metrics["total_time_ms"] = int((time.perf_counter() - start_time) * 1000)
+    return recs, [], metrics

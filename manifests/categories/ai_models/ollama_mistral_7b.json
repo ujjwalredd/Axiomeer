@@ -1,0 +1,25 @@
+{
+  "id": "ollama_mistral_7b",
+  "name": "Mistral 7B (Local)",
+  "description": "Mistral 7B model running locally via Ollama",
+  "category": "ai_models",
+  "subcategory": "local_llm",
+  "tags": [
+    "mistral",
+    "local",
+    "ollama",
+    "chat"
+  ],
+  "capabilities": [
+    "chat",
+    "reasoning",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": false,
+  "product_type": "model",
+  "latency_est_ms": 2500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/ollama/mistral_7b"
+}

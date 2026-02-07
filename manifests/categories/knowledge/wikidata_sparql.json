@@ -1,0 +1,25 @@
+{
+  "id": "wikidata_sparql",
+  "name": "Wikidata Knowledge Graph",
+  "description": "90M+ structured knowledge entities with SPARQL queries",
+  "category": "knowledge",
+  "subcategory": "knowledge_graph",
+  "tags": [
+    "wikidata",
+    "knowledge graph",
+    "sparql",
+    "entities"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 1500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/wikidata/sparql"
+}

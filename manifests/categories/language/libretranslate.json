@@ -1,0 +1,25 @@
+{
+  "id": "libretranslate",
+  "name": "LibreTranslate Free Translation",
+  "description": "Free and open-source translation API for 30+ languages",
+  "category": "language",
+  "subcategory": "translation",
+  "tags": [
+    "translation",
+    "languages",
+    "libre",
+    "opensource"
+  ],
+  "capabilities": [
+    "translate",
+    "docs",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 1500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/libretranslate/translate"
+}

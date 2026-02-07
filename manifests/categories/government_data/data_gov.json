@@ -1,0 +1,25 @@
+{
+  "id": "data_gov",
+  "name": "Data.gov Datasets",
+  "description": "300,000+ datasets from US government",
+  "category": "government_data",
+  "subcategory": "datasets",
+  "tags": [
+    "datagov",
+    "usa",
+    "datasets",
+    "open data"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "dataset",
+  "latency_est_ms": 1000,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/datagov/search"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "pubmed_search",
+  "name": "PubMed Biomedical Literature",
+  "description": "35M+ biomedical literature citations from NCBI",
+  "category": "knowledge",
+  "subcategory": "academic",
+  "tags": [
+    "pubmed",
+    "medical",
+    "biomedical",
+    "research"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 1000,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/pubmed/search"
+}

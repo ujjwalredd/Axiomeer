@@ -1,0 +1,25 @@
+{
+  "id": "covid_stats",
+  "name": "COVID-19 Global Statistics",
+  "description": "Real-time COVID-19 data worldwide from disease.sh",
+  "category": "government_data",
+  "subcategory": "health",
+  "tags": [
+    "covid",
+    "health",
+    "pandemic",
+    "statistics"
+  ],
+  "capabilities": [
+    "search",
+    "realtime",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 600,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/health/covid_stats"
+}

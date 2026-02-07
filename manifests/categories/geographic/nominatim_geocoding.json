@@ -1,0 +1,25 @@
+{
+  "id": "nominatim_geocoding",
+  "name": "OpenStreetMap Geocoding",
+  "description": "Geocoding and reverse geocoding using OpenStreetMap",
+  "category": "geographic",
+  "subcategory": "geocoding",
+  "tags": [
+    "osm",
+    "geocoding",
+    "maps",
+    "location"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 800,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/nominatim/geocoding"
+}

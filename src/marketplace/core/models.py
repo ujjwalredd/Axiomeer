@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Any
 
 
 Freshness = Literal["static", "daily", "realtime"]
 ShopStatus = Literal["OK", "NO_MATCH"]
+ProductType = Literal["api", "model", "dataset", "tool", "aggregator"]
 
 
 class Constraints(BaseModel):
@@ -44,6 +45,7 @@ class ShopResponse(BaseModel):
     recommendations: List[Recommendation] = Field(default_factory=list)
     explanation: List[str] = Field(default_factory=list)
     sales_agent: SalesAgentMessage | None = None
+    metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AppCreate(BaseModel):
@@ -51,15 +53,26 @@ class AppCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=2000)
 
+    # Enhanced categorization (optional, backward compatible)
+    category: str = Field(default="general", max_length=100)
+    subcategory: Optional[str] = Field(default=None, max_length=100)
+    tags: List[str] = Field(default_factory=list)
+
     capabilities: List[str] = Field(default_factory=list)
     freshness: Freshness = "static"
     citations_supported: bool = True
+
+    # Enhanced product type (optional)
+    product_type: ProductType = "api"
 
     latency_est_ms: int = Field(default=500, ge=1)
     cost_est_usd: float = Field(default=0.0, ge=0.0)
 
     executor_type: Literal["http_api"] = "http_api"
     executor_url: str = Field(default="", max_length=2000)
+
+    # Optional metadata
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -79,6 +92,24 @@ class AppCreate(BaseModel):
             if cap not in seen:
                 seen.add(cap)
                 cleaned.append(cap)
+        return cleaned
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        cleaned: list[str] = []
+        seen = set()
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            tag = item.strip().lower()
+            if tag and tag not in seen:
+                seen.add(tag)
+                cleaned.append(tag)
         return cleaned
 
 class AppOut(AppCreate):

@@ -37,14 +37,51 @@ from marketplace.storage.models import AppListing
 from marketplace.storage.messages import ConversationMessage
 from marketplace.storage.runs import Run
 
+# Import provider endpoints
+from apps.api.providers import router as providers_router
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     Base.metadata.create_all(bind=engine)
     bootstrap_manifests()
+
+    # Initialize semantic search engine
+    from marketplace.core.semantic_search import SemanticSearchEngine
+    from marketplace.settings import SEMANTIC_SEARCH_ENABLED, SEMANTIC_SEARCH_MODEL
+
+    semantic_engine = SemanticSearchEngine(
+        model_name=SEMANTIC_SEARCH_MODEL,
+        enabled=SEMANTIC_SEARCH_ENABLED
+    )
+
+    # Store in app state for access in endpoints
+    app.state.semantic_search = semantic_engine
+
+    # Pre-populate semantic index with existing products
+    if SEMANTIC_SEARCH_ENABLED:
+        db = SessionLocal()
+        try:
+            rows = db.query(AppListing).all()
+            products = []
+            for r in rows:
+                products.append({
+                    "id": r.id,
+                    "name": r.name,
+                    "description": r.description,
+                    "capabilities": [c for c in r.capabilities.split(",") if c],
+                })
+            if products:
+                semantic_engine.add_products(products)
+        finally:
+            db.close()
+
     yield
 
 
 app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
+
+# Include provider endpoints
+app.include_router(providers_router)
 
 _cache_lock = Lock()
 _cache_store: dict[str, dict] = {}
@@ -80,19 +117,46 @@ def get_db():
         db.close()
 
 
+def _refresh_semantic_index(db: Session):
+    """Refresh the semantic search index with all products from the database."""
+    semantic_engine = getattr(app.state, "semantic_search", None)
+    if semantic_engine and semantic_engine.is_available():
+        rows = db.query(AppListing).all()
+        products = []
+        for r in rows:
+            products.append({
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "capabilities": [c for c in r.capabilities.split(",") if c],
+            })
+        if products:
+            semantic_engine.add_products(products)
+
+
 def _row_to_app_out(r: AppListing) -> AppOut:
     """Convert an ORM AppListing row to an AppOut response."""
+    try:
+        metadata = json.loads(r.extra_metadata) if r.extra_metadata else {}
+    except:
+        metadata = {}
+
     return AppOut(
         id=r.id,
         name=r.name,
         description=r.description,
+        category=r.category,
+        subcategory=r.subcategory,
+        tags=[t for t in r.tags.split(",") if t],
         capabilities=[c for c in r.capabilities.split(",") if c],
         freshness=r.freshness,
         citations_supported=r.citations_supported,
+        product_type=r.product_type,
         latency_est_ms=r.latency_est_ms,
         cost_est_usd=r.cost_est_usd,
         executor_type=r.executor_type,
         executor_url=r.executor_url,
+        metadata=metadata,
     )
 
 def _p95(values: list[int]) -> int | None:
@@ -170,6 +234,19 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/semantic-search/stats")
+def semantic_search_stats():
+    """Get semantic search engine statistics."""
+    semantic_engine = getattr(app.state, "semantic_search", None)
+    if semantic_engine:
+        return semantic_engine.get_stats()
+    return {
+        "enabled": False,
+        "initialized": False,
+        "error": "Semantic search engine not initialized",
+    }
+
+
 # ---- Apps CRUD ----
 
 @app.get("/apps", response_model=list[AppOut])
@@ -199,6 +276,10 @@ def create_app(app_in: AppCreate, db: Session = Depends(get_db)):
     db.add(row)
     db.commit()
     db.refresh(row)
+
+    # Refresh semantic search index
+    _refresh_semantic_index(db)
+
     return _row_to_app_out(row)
 
 
@@ -232,6 +313,10 @@ def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(row)
+
+    # Refresh semantic search index
+    _refresh_semantic_index(db)
+
     return _row_to_app_out(row)
 
 
@@ -272,7 +357,10 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
             "trust_score": trust.trust_score if trust else None,
         })
 
-    recs, router_expl = recommend(req, apps, k=len(apps))
+    # Get semantic search engine from app state
+    semantic_engine = getattr(app.state, "semantic_search", None)
+
+    recs, router_expl, router_metrics = recommend(req, apps, k=len(apps), semantic_search_engine=semantic_engine)
     if not recs:
         message = "No suitable products matched strict routing thresholds."
         if router_expl:
@@ -289,6 +377,7 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
                 final_choice="NO_MATCH",
                 recommendations=[],
             ),
+            metrics=router_metrics,
         )
         _cache_set(cache_key, res.model_dump(), SHOP_CACHE_TTL_SECONDS)
         return res
@@ -333,6 +422,7 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
                 final_choice="NO_MATCH",
                 recommendations=[],
             ),
+            metrics=router_metrics,
         )
         _cache_set(cache_key, res.model_dump(), SHOP_CACHE_TTL_SECONDS)
         return res
@@ -350,6 +440,7 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
                 final_choice="NO_MATCH",
                 recommendations=[],
             ),
+            metrics=router_metrics,
         )
         _cache_set(cache_key, res.model_dump(), SHOP_CACHE_TTL_SECONDS)
         return res
@@ -411,6 +502,7 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
         recommendations=recs_sorted,
         explanation=[sales["summary"]],
         sales_agent=sales_agent_msg,
+        metrics=router_metrics,
     )
     _cache_set(cache_key, res.model_dump(), SHOP_CACHE_TTL_SECONDS)
     return res
@@ -1082,7 +1174,10 @@ def bootstrap_manifests():
         return
     db = SessionLocal()
     try:
-        for manifest_path in sorted(MANIFESTS_DIR.glob("*.json")):
+        # Load from both old location (manifests/*.json) and new categories (manifests/categories/*/*.json)
+        manifest_paths = list(MANIFESTS_DIR.glob("*.json")) + list(MANIFESTS_DIR.glob("categories/*/*.json"))
+
+        for manifest_path in sorted(manifest_paths):
             try:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 manifest = AppCreate.model_validate(manifest).model_dump()
@@ -1095,15 +1190,21 @@ def bootstrap_manifests():
                     db.add(row)
                 row.name = manifest.get("name", app_id)
                 row.description = manifest.get("description", "")
+                row.category = manifest.get("category", "general")
+                row.subcategory = manifest.get("subcategory")
+                row.tags = ",".join(manifest.get("tags", []))
                 row.capabilities = ",".join(manifest.get("capabilities", []))
                 row.freshness = manifest.get("freshness", "static")
                 row.citations_supported = manifest.get("citations_supported", True)
+                row.product_type = manifest.get("product_type", "api")
                 row.latency_est_ms = manifest.get("latency_est_ms", 500)
                 row.cost_est_usd = manifest.get("cost_est_usd", 0.0)
                 row.executor_type = manifest.get("executor_type", "http_api")
                 row.executor_url = manifest.get("executor_url", "")
+                row.extra_metadata = json.dumps(manifest.get("metadata", {}))
                 db.commit()
-            except Exception:
+            except Exception as e:
+                print(f"Error loading manifest {manifest_path}: {e}")
                 continue
     finally:
         db.close()

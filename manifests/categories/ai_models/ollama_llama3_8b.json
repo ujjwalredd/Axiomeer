@@ -1,0 +1,25 @@
+{
+  "id": "ollama_llama3_8b",
+  "name": "Llama 3.1 8B (Local)",
+  "description": "Meta's Llama 3.1 8B model running locally via Ollama",
+  "category": "ai_models",
+  "subcategory": "local_llm",
+  "tags": [
+    "llama",
+    "local",
+    "ollama",
+    "chat"
+  ],
+  "capabilities": [
+    "chat",
+    "reasoning",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": false,
+  "product_type": "model",
+  "latency_est_ms": 3000,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/ollama/llama3_8b"
+}

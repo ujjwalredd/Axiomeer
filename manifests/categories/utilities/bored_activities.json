@@ -1,0 +1,24 @@
+{
+  "id": "bored_activities",
+  "name": "Bored API Activity Suggestions",
+  "description": "Random activity suggestions when you're bored",
+  "category": "utilities",
+  "subcategory": "fun",
+  "tags": [
+    "activities",
+    "bored",
+    "suggestions",
+    "random"
+  ],
+  "capabilities": [
+    "docs",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 300,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/bored/activities"
+}

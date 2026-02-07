@@ -1,0 +1,25 @@
+{
+  "id": "tmdb_movies",
+  "name": "TMDB Movie & TV Database",
+  "description": "Comprehensive movie and TV database with images",
+  "category": "media",
+  "subcategory": "movies",
+  "tags": [
+    "movies",
+    "tv",
+    "tmdb",
+    "entertainment"
+  ],
+  "capabilities": [
+    "search",
+    "docs",
+    "citations"
+  ],
+  "freshness": "daily",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 600,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/tmdb/movies"
+}

@@ -12,8 +12,8 @@ API_BASE_URL: str = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 # Ollama
 OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "60"))
-ROUTER_MODEL: str = os.getenv("ROUTER_MODEL", "qwen2.5:14b-instruct")
-ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "qwen2.5:14b-instruct")
+ROUTER_MODEL: str = os.getenv("ROUTER_MODEL", "phi3.5:3.8b")
+ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "phi3.5:3.8b")
 SALES_AGENT_MODEL: str = os.getenv("SALES_AGENT_MODEL", "phi3.5:3.8b")
 SALES_AGENT_MAX_TOKENS: int = int(os.getenv("SALES_AGENT_MAX_TOKENS", "200"))
 SALES_AGENT_TEMPERATURE: float = float(os.getenv("SALES_AGENT_TEMPERATURE", "0.0"))
@@ -37,6 +37,12 @@ MEMORY_MAX_MESSAGES: int = int(os.getenv("MEMORY_MAX_MESSAGES", "6"))
 
 # Provider execution timeout (seconds)
 EXECUTOR_TIMEOUT: int = int(os.getenv("EXECUTOR_TIMEOUT", "20"))
+
+# Semantic Search
+SEMANTIC_SEARCH_ENABLED: bool = os.getenv("SEMANTIC_SEARCH_ENABLED", "true").lower() in ("true", "1", "yes")
+SEMANTIC_SEARCH_TOP_K: int = int(os.getenv("SEMANTIC_SEARCH_TOP_K", "20"))
+SEMANTIC_SEARCH_TIMEOUT_MS: int = int(os.getenv("SEMANTIC_SEARCH_TIMEOUT_MS", "1000"))
+SEMANTIC_SEARCH_MODEL: str = os.getenv("SEMANTIC_SEARCH_MODEL", "all-MiniLM-L6-v2")
 
 # Caching (seconds)
 SHOP_CACHE_TTL_SECONDS: int = int(os.getenv("SHOP_CACHE_TTL_SECONDS", "30"))
