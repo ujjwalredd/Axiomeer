@@ -85,33 +85,33 @@ result = axiomeer.shop("Get current weather in Paris")
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 2: Agent Connects to Axiomeer Marketplace             │
 │  POST /shop with task description                           │
-│  {                                                           │
+│  {                                                          │
 │    "task": "Get current weather in Paris",                  │
 │    "required_capabilities": ["weather", "realtime"]         │
-│  }                                                           │
+│  }                                                          │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 3: Marketplace Intelligence Layer                     │
-│                                                              │
+│                                                             │
 │  a) LLM Capability Extraction (Ollama)                      │
 │     Input: "Get current weather in Paris"                   │
 │     Output: ["weather", "realtime", "geographic"]           │
-│                                                              │
+│                                                             │
 │  b) Semantic Search (FAISS + Embeddings)                    │
 │     - Converts task to 384-dim vector                       │
 │     - Searches 91 API embeddings                            │
 │     - Returns top 20 relevant matches                       │
-│     - Fallback: TF-IDF if semantic unavailable             │
-│                                                              │
+│     - Fallback: TF-IDF if semantic unavailable              │
+│                                                             │
 │  c) Weighted Ranking Algorithm                              │
 │     score = (0.70 × capability_match) +                     │
 │             (0.25 × relevance_score) +                      │
 │             (0.15 × trust_score) -                          │
 │             (0.20 × latency_penalty) -                      │
 │             (0.10 × cost_penalty)                           │
-│                                                              │
+│                                                             │
 │     Filters:                                                │
 │     - 100% capability coverage required                     │
 │     - Minimum relevance: 0.08                               │
@@ -121,35 +121,35 @@ result = axiomeer.shop("Get current weather in Paris")
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 4: Marketplace Returns Ranked Recommendations         │
-│  {                                                           │
-│    "recommendations": [                                      │
-│      {                                                       │
+│  {                                                          │
+│    "recommendations": [                                     │
+│      {                                                      │
 │        "app_id": "realtime_weather_agent",                  │
 │        "score": 0.89,                                       │
 │        "capability_match": 1.0,                             │
 │        "relevance_score": 0.92,                             │
 │        "trust_score": 0.75,                                 │
 │        "latency_ms": 800                                    │
-│      },                                                      │
-│      {...}                                                   │
-│    ],                                                        │
-│    "explanation": {                                          │
+│      },                                                     │
+│      {...}                                                  │
+│    ],                                                       │
+│    "explanation": {                                         │
 │      "summary": "Recommended realtime_weather_agent...",    │
 │      "rationale": "Best match for real-time weather..."     │
-│    }                                                         │
-│  }                                                           │
+│    }                                                        │
+│  }                                                          │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 5: Agent Selects & Executes API                       │
-│  POST /execute                                               │
-│  {                                                           │
+│  POST /execute                                              │
+│  {                                                          │
 │    "app_id": "realtime_weather_agent",                      │
 │    "task": "Weather in Paris",                              │
-│    "inputs": {"lat": 48.8566, "lon": 2.3522},              │
+│    "inputs": {"lat": 48.8566, "lon": 2.3522},               │
 │    "require_citations": true                                │
-│  }                                                           │
+│  }                                                          │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -165,18 +165,18 @@ result = axiomeer.shop("Get current weather in Paris")
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 7: Agent Receives Validated Result                    │
-│  {                                                           │
+│  {                                                          │
 │    "ok": true,                                              │
 │    "run_id": 42,                                            │
 │    "output": {                                              │
-│      "answer": "Paris: 12°C, Partly cloudy, Wind: 15km/h", │
-│      "citations": ["https://open-meteo.com"],              │
-│      "retrieved_at": "2026-02-07T14:30:00Z",               │
+│      "answer": "Paris: 12°C, Partly cloudy, Wind: 15km/h",  │
+│      "citations": ["https://open-meteo.com"],               │
+│      "retrieved_at": "2026-02-07T14:30:00Z",                │
 │      "quality": "verified"                                  │
-│    },                                                        │
+│    },                                                       │
 │    "latency_ms": 850,                                       │
 │    "cost_usd": 0.0                                          │
-│  }                                                           │
+│  }                                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -261,7 +261,7 @@ agent.run("What's the weather in Paris and the Bitcoin price?")
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     CLIENT LAYER                                 │
+│                     CLIENT LAYER                                │
 │  AI Agents, Web Apps, Mobile Apps, CLI Tools                    │
 └────────────────────────┬────────────────────────────────────────┘
                          │
@@ -269,69 +269,69 @@ agent.run("What's the weather in Paris and the Bitcoin price?")
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 AUTHENTICATION & RATE LIMITING                   │
-│  ┌────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │  JWT Tokens    │  │   API Keys      │  │  Rate Limiter   │ │
-│  │  (python-jose) │  │  (SHA-256 hash) │  │  (Tier-based)   │ │
-│  └────────────────┘  └─────────────────┘  └─────────────────┘ │
+│                 AUTHENTICATION & RATE LIMITING                  │
+│  ┌────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │
+│  │  JWT Tokens    │  │   API Keys      │  │  Rate Limiter   │   │
+│  │  (python-jose) │  │  (SHA-256 hash) │  │  (Tier-based)   │   │
+│  └────────────────┘  └─────────────────┘  └─────────────────┘   │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    FASTAPI APPLICATION                           │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              CORE ENDPOINTS                               │  │
-│  │  /shop  → Discover & rank APIs                           │  │
-│  │  /execute → Execute specific API                         │  │
-│  │  /apps → List all available APIs                         │  │
-│  │  /runs → View execution history                          │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│                    FASTAPI APPLICATION                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │              CORE ENDPOINTS                              │   │
+│  │  /shop  → Discover & rank APIs                           │   │
+│  │  /execute → Execute specific API                         │   │
+│  │  /apps → List all available APIs                         │   │
+│  │  /runs → View execution history                          │   │
+│  └──────────────────────────────────────────────────────────┘   │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   INTELLIGENCE LAYER                             │
+│                   INTELLIGENCE LAYER                            │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  LLM Capability Extractor (Ollama phi3.5:3.8b)           │ │
-│  │  - Analyzes natural language task                        │ │
-│  │  - Extracts required capabilities                        │ │
-│  │  - Infers constraints (freshness, cost, latency)         │ │
+│  │  LLM Capability Extractor (Ollama phi3.5:3.8b)             │ │
+│  │  - Analyzes natural language task                          │ │
+│  │  - Extracts required capabilities                          │ │
+│  │  - Infers constraints (freshness, cost, latency)           │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Semantic Search Engine (FAISS + sentence-transformers)  │ │
-│  │  - 384-dimensional embeddings                            │ │
-│  │  - all-MiniLM-L6-v2 model                               │ │
-│  │  - Sub-50ms similarity search                            │ │
-│  │  - TF-IDF fallback                                       │ │
+│  │  Semantic Search Engine (FAISS + sentence-transformers)    │ │
+│  │  - 384-dimensional embeddings                              │ │
+│  │  - all-MiniLM-L6-v2 model                                  │ │
+│  │  - Sub-50ms similarity search                              │ │
+│  │  - TF-IDF fallback                                         │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Weighted Ranking Algorithm                               │ │
-│  │  - Capability matching (70% weight)                      │ │
-│  │  - Semantic relevance (25% weight)                       │ │
-│  │  - Trust score (15% weight)                              │ │
-│  │  - Latency penalty (20% weight)                          │ │
-│  │  - Cost consideration (10% weight)                       │ │
+│  │  Weighted Ranking Algorithm                                │ │
+│  │  - Capability matching (70% weight)                        │ │
+│  │  - Semantic relevance (25% weight)                         │ │
+│  │  - Trust score (15% weight)                                │ │
+│  │  - Latency penalty (20% weight)                            │ │
+│  │  - Cost consideration (10% weight)                         │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Sales Agent (LLM Explanations)                          │ │
-│  │  - Explains why APIs were recommended                    │ │
-│  │  - Describes tradeoffs                                   │ │
-│  │  - Provides rationale for rankings                       │ │
+│  │  Sales Agent (LLM Explanations)                            │ │
+│  │  - Explains why APIs were recommended                      │ │
+│  │  - Describes tradeoffs                                     │ │
+│  │  - Provides rationale for rankings                         │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PROVIDER LAYER                                │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  91 Provider Endpoints (apps/api/providers.py)           │  │
-│  │  - Financial: Coinbase, CoinGecko, Exchange Rates...    │  │
-│  │  - Weather: Open-Meteo, Nominatim...                    │  │
-│  │  - Knowledge: Wikipedia, ArXiv, PubMed...               │  │
-│  │  - Entertainment: Pokemon, Rick&Morty, Cat Facts...     │  │
-│  │  - [... 8 more categories]                              │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  Each provider:                                                  │
+│                    PROVIDER LAYER                               │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  91 Provider Endpoints (apps/api/providers.py)           │   │
+│  │  - Financial: Coinbase, CoinGecko, Exchange Rates...     │   │
+│  │  - Weather: Open-Meteo, Nominatim...                     │   │
+│  │  - Knowledge: Wikipedia, ArXiv, PubMed...                │   │
+│  │  - Entertainment: Pokemon, Rick&Morty, Cat Facts...      │   │
+│  │  - [... 8 more categories]                               │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│  Each provider:                                                 │
 │  - Makes HTTP call to external API                              │
 │  - Transforms response to standard format                       │
 │  - Adds citations and metadata                                  │
@@ -340,24 +340,24 @@ agent.run("What's the weather in Paris and the Bitcoin price?")
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   VALIDATION & STORAGE                           │
+│                   VALIDATION & STORAGE                          │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Output Validator                                         │ │
-│  │  - Verifies citation URLs                                │ │
-│  │  - Validates timestamps                                  │ │
-│  │  - Checks quality markers                                │ │
-│  │  - Assigns quality scores                                │ │
+│  │  Output Validator                                          │ │
+│  │  - Verifies citation URLs                                  │ │
+│  │  - Validates timestamps                                    │ │
+│  │  - Checks quality markers                                  │ │
+│  │  - Assigns quality scores                                  │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  PostgreSQL Database                                      │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐ │ │
-│  │  │ Users        │  │ API Keys     │  │  Rate Limits   │ │ │
-│  │  │ - Auth data  │  │ - Hashed     │  │  - Per-user    │ │ │
-│  │  └──────────────┘  └──────────────┘  └────────────────┘ │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐ │ │
-│  │  │ Runs         │  │ Messages     │  │  App Listings  │ │ │
-│  │  │ - Provenance │  │ - Conv logs  │  │  - Manifests   │ │ │
-│  │  └──────────────┘  └──────────────┘  └────────────────┘ │ │
+│  │  PostgreSQL Database                                       │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐    │ │
+│  │  │ Users        │  │ API Keys     │  │  Rate Limits   │    │ │
+│  │  │ - Auth data  │  │ - Hashed     │  │  - Per-user    │    │ │
+│  │  └──────────────┘  └──────────────┘  └────────────────┘    │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐    │ │
+│  │  │ Runs         │  │ Messages     │  │  App Listings  │    │ │
+│  │  │ - Provenance │  │ - Conv logs  │  │  - Manifests   │    │ │
+│  │  └──────────────┘  └──────────────┘  └────────────────┘    │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
