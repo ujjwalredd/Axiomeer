@@ -1,0 +1,25 @@
+{
+  "id": "dog_images",
+  "name": "Dog Images",
+  "description": "Random dog images from Dog CEO API",
+  "category": "entertainment",
+  "subcategory": "images",
+  "tags": [
+    "dogs",
+    "images",
+    "animals",
+    "photos"
+  ],
+  "capabilities": [
+    "entertainment",
+    "images",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 300,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/entertainment/dog_images"
+}

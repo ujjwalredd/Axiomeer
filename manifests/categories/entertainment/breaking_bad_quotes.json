@@ -1,0 +1,25 @@
+{
+  "id": "breaking_bad_quotes",
+  "name": "Breaking Bad Quotes",
+  "description": "Random quotes from Breaking Bad TV series",
+  "category": "entertainment",
+  "subcategory": "tv",
+  "tags": [
+    "breaking bad",
+    "tv",
+    "quotes",
+    "drama"
+  ],
+  "capabilities": [
+    "entertainment",
+    "quotes",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/entertainment/breaking_bad"
+}

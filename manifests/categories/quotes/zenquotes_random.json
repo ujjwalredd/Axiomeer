@@ -1,0 +1,25 @@
+{
+  "id": "zenquotes_random",
+  "name": "ZenQuotes",
+  "description": "Inspirational and motivational quotes",
+  "category": "quotes",
+  "subcategory": "inspirational",
+  "tags": [
+    "quotes",
+    "inspiration",
+    "motivation",
+    "zen"
+  ],
+  "capabilities": [
+    "entertainment",
+    "quotes",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/quotes/zenquotes"
+}

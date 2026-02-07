@@ -1,0 +1,25 @@
+{
+  "id": "themealdb_recipes",
+  "name": "TheMealDB Recipes",
+  "description": "Recipe database with meals from around the world",
+  "category": "food",
+  "subcategory": "recipes",
+  "tags": [
+    "recipes",
+    "cooking",
+    "food",
+    "meals"
+  ],
+  "capabilities": [
+    "food",
+    "search",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/food/meals"
+}

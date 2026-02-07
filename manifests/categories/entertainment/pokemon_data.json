@@ -1,0 +1,25 @@
+{
+  "id": "pokemon_data",
+  "name": "Pokemon Data",
+  "description": "Comprehensive Pokemon information from PokeAPI",
+  "category": "entertainment",
+  "subcategory": "gaming",
+  "tags": [
+    "pokemon",
+    "gaming",
+    "data",
+    "nintendo"
+  ],
+  "capabilities": [
+    "entertainment",
+    "search",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/entertainment/pokemon"
+}

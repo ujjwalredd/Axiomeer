@@ -1,0 +1,25 @@
+{
+  "id": "cat_facts",
+  "name": "Cat Facts",
+  "description": "Random interesting facts about cats",
+  "category": "entertainment",
+  "subcategory": "fun",
+  "tags": [
+    "cats",
+    "facts",
+    "animals",
+    "trivia"
+  ],
+  "capabilities": [
+    "entertainment",
+    "facts",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/entertainment/cat_facts"
+}

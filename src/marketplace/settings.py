@@ -12,6 +12,7 @@ API_BASE_URL: str = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 # Ollama
 OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "phi3.5:3.8b")  # LLM for parameter extraction
 ROUTER_MODEL: str = os.getenv("ROUTER_MODEL", "phi3.5:3.8b")
 ANSWER_MODEL: str = os.getenv("ANSWER_MODEL", "phi3.5:3.8b")
 SALES_AGENT_MODEL: str = os.getenv("SALES_AGENT_MODEL", "phi3.5:3.8b")
@@ -54,3 +55,16 @@ PROVIDER_CACHE_TTL_WIKIDUMPS: int = int(os.getenv("PROVIDER_CACHE_TTL_WIKIDUMPS"
 PROVIDER_CACHE_TTL_RESTCOUNTRIES: int = int(os.getenv("PROVIDER_CACHE_TTL_RESTCOUNTRIES", "3600"))
 PROVIDER_CACHE_TTL_OPENLIB: int = int(os.getenv("PROVIDER_CACHE_TTL_OPENLIB", "3600"))
 PROVIDER_CACHE_TTL_DICTIONARY: int = int(os.getenv("PROVIDER_CACHE_TTL_DICTIONARY", "86400"))
+
+# Authentication
+AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION_USE_RANDOM_SECRET")
+JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+API_KEY_HEADER: str = os.getenv("API_KEY_HEADER", "X-API-Key")
+
+# Rate Limiting
+RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ("true", "1", "yes")
+RATE_LIMIT_FREE_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_FREE_TIER_PER_HOUR", "100"))
+RATE_LIMIT_STARTER_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_STARTER_TIER_PER_HOUR", "1000"))
+RATE_LIMIT_PRO_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_PRO_TIER_PER_HOUR", "10000"))

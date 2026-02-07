@@ -1,0 +1,25 @@
+{
+  "id": "universities_search",
+  "name": "World Universities",
+  "description": "Search database of universities worldwide",
+  "category": "knowledge",
+  "subcategory": "education",
+  "tags": [
+    "universities",
+    "education",
+    "schools",
+    "colleges"
+  ],
+  "capabilities": [
+    "knowledge",
+    "search",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 500,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/knowledge/universities"
+}

@@ -721,29 +721,89 @@ def datagov_search(
 
 # ==================== KNOWLEDGE/RESEARCH PROVIDERS ====================
 
+@router.get("/wikipedia")
+def wikipedia_search(
+    q: str = Query(..., description="Search query for Wikipedia article")
+) -> Dict[str, Any]:
+    """
+    Wikipedia article summary search.
+
+    Args:
+        q: Search query
+
+    Returns:
+        Standardized response with Wikipedia article summary
+    """
+    cache_key = _cache_key("wikipedia:search", {"q": q})
+    if cached := _cache_get(cache_key):
+        return cached
+
+    try:
+        # Wikipedia API for article summary
+        url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + requests.utils.quote(q)
+        headers = {"User-Agent": "Axiomeer/1.0 (https://github.com/axiomeer/marketplace)"}
+
+        response = requests.get(url, headers=headers, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+
+        data = response.json()
+
+        if data.get("type") == "standard":
+            title = data.get("title", "")
+            extract = data.get("extract", "")
+            page_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
+
+            result = _standardize_response(
+                answer=f"{title}: {extract}",
+                citations=[page_url, "https://en.wikipedia.org/"],
+                metadata={"title": title, "url": page_url}
+            )
+        else:
+            result = _error_response(f"No Wikipedia article found for '{q}'")
+
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            return _error_response(f"No Wikipedia article found for '{q}'")
+        logger.error(f"Wikipedia API error: {e}")
+        return _error_response(f"Failed to search Wikipedia: {str(e)}")
+    except Exception as e:
+        logger.error(f"Wikipedia search error: {e}")
+        return _error_response(f"Failed to search Wikipedia: {str(e)}")
+
+
 @router.get("/arxiv/papers")
 def arxiv_papers(
-    query: str = Query(..., description="Search query"),
+    search_query: Optional[str] = Query(None, description="Search query"),
+    query: Optional[str] = Query(None, description="Alias for search_query"),
     max_results: int = Query(5, description="Maximum results to return")
 ) -> Dict[str, Any]:
     """
     arXiv research papers search.
 
     Args:
-        query: Search query
+        search_query: Search query (preferred parameter name)
+        query: Alias for search_query
         max_results: Maximum number of results
 
     Returns:
         Standardized response with arXiv papers
     """
-    cache_key = _cache_key("arxiv:papers", {"query": query, "max_results": max_results})
+    # Accept either parameter name
+    q = search_query or query
+    if not q:
+        return _error_response("No search query provided")
+
+    cache_key = _cache_key("arxiv:papers", {"query": q, "max_results": max_results})
     if cached := _cache_get(cache_key):
         return cached
 
     try:
         url = "http://export.arxiv.org/api/query"
         params = {
-            "search_query": f"all:{query}",
+            "search_query": f"all:{q}",
             "start": 0,
             "max_results": max_results
         }
@@ -773,12 +833,12 @@ def arxiv_papers(
             urls = [p["url"] for p in papers]
 
             result = _standardize_response(
-                answer=f"Found {len(papers)} arXiv papers for '{query}': {'; '.join(titles[:3])}",
+                answer=f"Found {len(papers)} arXiv papers for '{q}': {'; '.join(titles[:3])}",
                 citations=urls + ["https://arxiv.org/"],
-                metadata={"query": query, "count": len(papers)}
+                metadata={"query": q, "count": len(papers)}
             )
         else:
-            result = _error_response(f"No arXiv papers found for '{query}'")
+            result = _error_response(f"No arXiv papers found for '{q}'")
 
         _cache_set(cache_key, result, CACHE_TTL_LONG)
         return result
@@ -790,20 +850,27 @@ def arxiv_papers(
 
 @router.get("/pubmed/search")
 def pubmed_search(
-    query: str = Query(..., description="Search query"),
+    term: Optional[str] = Query(None, description="Search term"),
+    query: Optional[str] = Query(None, description="Alias for term"),
     max_results: int = Query(5, description="Maximum results")
 ) -> Dict[str, Any]:
     """
     PubMed biomedical literature search.
 
     Args:
-        query: Search query
+        term: Search term (preferred parameter name)
+        query: Alias for term
         max_results: Maximum results to return
 
     Returns:
         Standardized response with PubMed articles
     """
-    cache_key = _cache_key("pubmed:search", {"query": query, "max_results": max_results})
+    # Accept either parameter
+    search_term = term or query
+    if not search_term:
+        return _error_response("No search term provided")
+
+    cache_key = _cache_key("pubmed:search", {"query": search_term, "max_results": max_results})
     if cached := _cache_get(cache_key):
         return cached
 
@@ -812,7 +879,7 @@ def pubmed_search(
         search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         search_params = {
             "db": "pubmed",
-            "term": query,
+            "term": search_term,
             "retmax": max_results,
             "retmode": "json"
         }
@@ -848,12 +915,12 @@ def pubmed_search(
                     citations.append(f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/")
 
             result = _standardize_response(
-                answer=f"Found {len(titles)} PubMed articles for '{query}': {'; '.join(titles[:3])}",
+                answer=f"Found {len(titles)} PubMed articles for '{search_term}': {'; '.join(titles[:3])}",
                 citations=citations[:5],
-                metadata={"query": query, "count": len(titles)}
+                metadata={"query": search_term, "count": len(titles)}
             )
         else:
-            result = _error_response(f"No PubMed articles found for '{query}'")
+            result = _error_response(f"No PubMed articles found for '{search_term}'")
 
         _cache_set(cache_key, result, CACHE_TTL_LONG)
         return result
@@ -1156,25 +1223,32 @@ def archive_org_search(
 
 @router.get("/gutenberg/books")
 def gutenberg_books(
-    query: str = Query(..., description="Search query for books")
+    query: Optional[str] = Query(None, description="Search query for books"),
+    author: Optional[str] = Query(None, description="Author name to search")
 ) -> Dict[str, Any]:
     """
     Project Gutenberg book search.
 
     Args:
-        query: Search query
+        query: Search query for books
+        author: Author name (alias for query)
 
     Returns:
         Standardized response with Gutenberg books
     """
-    cache_key = _cache_key("gutenberg:books", {"query": query})
+    # Accept either parameter
+    search_term = query or author
+    if not search_term:
+        return _error_response("No search query or author provided")
+
+    cache_key = _cache_key("gutenberg:books", {"query": search_term})
     if cached := _cache_get(cache_key):
         return cached
 
     try:
         # Using Gutendex API
         url = "https://gutendex.com/books"
-        params = {"search": query}
+        params = {"search": search_term}
 
         response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
@@ -1217,8 +1291,8 @@ def gutenberg_books(
 
 @router.get("/coingecko/crypto")
 def coingecko_crypto(
-    coin_id: str = Query("bitcoin", description="Coin ID (e.g., bitcoin, ethereum)"),
-    vs_currency: str = Query("usd", description="Target currency")
+    coin_id: str = Query(..., description="Coin ID (e.g., bitcoin, ethereum, ripple for XRP)"),
+    vs_currency: str = Query(default="usd", description="Target currency")
 ) -> Dict[str, Any]:
     """
     CoinGecko cryptocurrency prices.
@@ -1277,7 +1351,7 @@ def coingecko_crypto(
 
 @router.get("/coinbase/prices")
 def coinbase_prices(
-    currency_pair: str = Query("BTC-USD", description="Currency pair (e.g., BTC-USD)")
+    currency_pair: str = Query(..., description="Currency pair (e.g., BTC-USD, XRP-USD, ETH-EUR)")
 ) -> Dict[str, Any]:
     """
     Coinbase exchange rates.
@@ -1370,27 +1444,27 @@ def blockchain_info(
 
 @router.get("/nominatim/geocoding")
 def nominatim_geocoding(
-    query: str = Query(..., description="Location query"),
+    q: str = Query(..., description="Location query"),
     limit: int = Query(5, description="Maximum results")
 ) -> Dict[str, Any]:
     """
     OpenStreetMap Nominatim geocoding.
 
     Args:
-        query: Location search query
+        q: Location search query
         limit: Maximum results
 
     Returns:
         Standardized response with geocoding results
     """
-    cache_key = _cache_key("nominatim:geocoding", {"query": query, "limit": limit})
+    cache_key = _cache_key("nominatim:geocoding", {"query": q, "limit": limit})
     if cached := _cache_get(cache_key):
         return cached
 
     try:
         url = "https://nominatim.openstreetmap.org/search"
         params = {
-            "q": query,
+            "q": q,
             "format": "json",
             "limit": limit
         }
@@ -1409,12 +1483,12 @@ def nominatim_geocoding(
                 locations.append(f"{display_name} ({lat}, {lon})")
 
             result = _standardize_response(
-                answer=f"Found {len(data)} locations for '{query}': {'; '.join(locations[:3])}",
+                answer=f"Found {len(data)} locations for '{q}': {'; '.join(locations[:3])}",
                 citations=["https://www.openstreetmap.org/"],
-                metadata={"query": query, "count": len(data), "results": data[:3]}
+                metadata={"query": q, "count": len(data), "results": data[:3]}
             )
         else:
-            result = _error_response(f"No locations found for '{query}'")
+            result = _error_response(f"No locations found for '{q}'")
 
         _cache_set(cache_key, result, CACHE_TTL_LONG)
         return result
@@ -1426,27 +1500,27 @@ def nominatim_geocoding(
 
 @router.get("/geonames/search")
 def geonames_search(
-    query: str = Query(..., description="Place name query"),
+    q: str = Query(..., description="Place name query"),
     username: str = Query("demo", description="GeoNames username")
 ) -> Dict[str, Any]:
     """
     GeoNames geographic database search.
 
     Args:
-        query: Place name search query
+        q: Place name search query
         username: GeoNames username (get free at geonames.org)
 
     Returns:
         Standardized response with GeoNames results
     """
-    cache_key = _cache_key("geonames:search", {"query": query})
+    cache_key = _cache_key("geonames:search", {"query": q})
     if cached := _cache_get(cache_key):
         return cached
 
     try:
         url = "http://api.geonames.org/searchJSON"
         params = {
-            "q": query,
+            "q": q,
             "maxRows": 5,
             "username": username
         }
@@ -1467,12 +1541,12 @@ def geonames_search(
                 places.append(f"{name}, {country} ({lat}, {lng}, pop: {population:,})")
 
             result = _standardize_response(
-                answer=f"Found {len(geonames)} places for '{query}': {'; '.join(places[:3])}",
+                answer=f"Found {len(geonames)} places for '{q}': {'; '.join(places[:3])}",
                 citations=["https://www.geonames.org/"],
-                metadata={"query": query, "count": len(geonames)}
+                metadata={"query": q, "count": len(geonames)}
             )
         else:
-            result = _error_response(f"No places found on GeoNames for '{query}'")
+            result = _error_response(f"No places found on GeoNames for '{q}'")
 
         _cache_set(cache_key, result, CACHE_TTL_LONG)
         return result
@@ -1944,66 +2018,6 @@ def pexels_media(
 
 # ==================== LANGUAGE PROVIDERS ====================
 
-@router.get("/libretranslate/translate")
-def libretranslate_translate(
-    text: str = Query(..., description="Text to translate"),
-    source: str = Query("en", description="Source language code"),
-    target: str = Query("es", description="Target language code"),
-    api_url: str = Query("https://libretranslate.com", description="LibreTranslate instance URL")
-) -> Dict[str, Any]:
-    """
-    LibreTranslate text translation.
-
-    Args:
-        text: Text to translate
-        source: Source language code
-        target: Target language code
-        api_url: LibreTranslate instance URL
-
-    Returns:
-        Standardized response with translation
-    """
-    cache_key = _cache_key("libretranslate:translate", {"text": text, "source": source, "target": target})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = f"{api_url}/translate"
-        payload = {
-            "q": text,
-            "source": source,
-            "target": target,
-            "format": "text"
-        }
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        translated_text = data.get("translatedText", "")
-
-        if translated_text:
-            result = _standardize_response(
-                answer=f"Translation from {source} to {target}: {translated_text}",
-                citations=[api_url],
-                metadata={
-                    "original": text,
-                    "translated": translated_text,
-                    "source": source,
-                    "target": target
-                }
-            )
-        else:
-            result = _error_response("Translation failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_LONG)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"LibreTranslate API error: {e}")
-        return _error_response(f"Failed to translate: {str(e)}")
-
-
 @router.get("/datamuse/words")
 def datamuse_words(
     query: str = Query("happy", description="Word query"),
@@ -2352,380 +2366,13 @@ def bored_activities(
 # ==================== HUGGING FACE MODELS ====================
 
 @router.get("/hf/gpt2")
-def hf_gpt2(
-    prompt: str = Query("Hello, I am a language model", description="Text prompt for generation"),
-    max_length: int = Query(100, description="Maximum length")
-) -> Dict[str, Any]:
-    """
-    Hugging Face GPT-2 text generation.
-
-    Args:
-        prompt: Text prompt
-        max_length: Maximum generation length
-
-    Returns:
-        Standardized response with generated text
-    """
-    cache_key = _cache_key("hf:gpt2", {"prompt": prompt, "max_length": max_length})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/gpt2"
-        payload = {"inputs": prompt, "parameters": {"max_length": max_length}}
-
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            generated_text = data[0].get("generated_text", "")
-            result = _standardize_response(
-                answer=f"GPT-2 generation: {generated_text}",
-                citations=["https://huggingface.co/gpt2"],
-                metadata={"prompt": prompt, "generated": generated_text}
-            )
-        else:
-            result = _error_response("GPT-2 generation failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face GPT-2 API error: {e}")
-        return _error_response(f"Failed to generate text: {str(e)}")
-
-
 @router.get("/hf/sentiment")
-def hf_sentiment(
-    text: str = Query(..., description="Text to analyze")
-) -> Dict[str, Any]:
-    """
-    Hugging Face sentiment analysis.
-
-    Args:
-        text: Text to analyze
-
-    Returns:
-        Standardized response with sentiment analysis
-    """
-    cache_key = _cache_key("hf:sentiment", {"text": text})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
-        payload = {"inputs": text}
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            results = data[0]
-            if results:
-                top_result = max(results, key=lambda x: x.get("score", 0))
-                label = top_result.get("label", "")
-                score = top_result.get("score", 0)
-
-                result = _standardize_response(
-                    answer=f"Sentiment: {label} (confidence: {score:.2%})",
-                    citations=["https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english"],
-                    metadata={"text": text, "label": label, "score": score}
-                )
-            else:
-                result = _error_response("Sentiment analysis returned no results")
-        else:
-            result = _error_response("Sentiment analysis failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face sentiment API error: {e}")
-        return _error_response(f"Failed to analyze sentiment: {str(e)}")
-
-
 @router.get("/hf/translate_en_es")
-def hf_translate_en_es(
-    text: str = Query(..., description="English text to translate to Spanish")
-) -> Dict[str, Any]:
-    """
-    Hugging Face English to Spanish translation.
-
-    Args:
-        text: English text to translate
-
-    Returns:
-        Standardized response with Spanish translation
-    """
-    cache_key = _cache_key("hf:translate_en_es", {"text": text})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/Helsinki-NLP/opus-mt-en-es"
-        payload = {"inputs": text}
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            translated = data[0].get("translation_text", "")
-            result = _standardize_response(
-                answer=f"Spanish translation: {translated}",
-                citations=["https://huggingface.co/Helsinki-NLP/opus-mt-en-es"],
-                metadata={"original": text, "translated": translated}
-            )
-        else:
-            result = _error_response("Translation failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_LONG)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face translation API error: {e}")
-        return _error_response(f"Failed to translate: {str(e)}")
-
-
 @router.get("/hf/translate_en_fr")
-def hf_translate_en_fr(
-    text: str = Query(..., description="English text to translate to French")
-) -> Dict[str, Any]:
-    """
-    Hugging Face English to French translation.
-
-    Args:
-        text: English text to translate
-
-    Returns:
-        Standardized response with French translation
-    """
-    cache_key = _cache_key("hf:translate_en_fr", {"text": text})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/Helsinki-NLP/opus-mt-en-fr"
-        payload = {"inputs": text}
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            translated = data[0].get("translation_text", "")
-            result = _standardize_response(
-                answer=f"French translation: {translated}",
-                citations=["https://huggingface.co/Helsinki-NLP/opus-mt-en-fr"],
-                metadata={"original": text, "translated": translated}
-            )
-        else:
-            result = _error_response("Translation failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_LONG)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face translation API error: {e}")
-        return _error_response(f"Failed to translate: {str(e)}")
-
-
 @router.get("/hf/summarization")
-def hf_summarization(
-    text: str = Query(..., description="Text to summarize"),
-    max_length: int = Query(130, description="Maximum summary length")
-) -> Dict[str, Any]:
-    """
-    Hugging Face text summarization.
-
-    Args:
-        text: Text to summarize
-        max_length: Maximum summary length
-
-    Returns:
-        Standardized response with summary
-    """
-    cache_key = _cache_key("hf:summarization", {"text": text, "max_length": max_length})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-        payload = {"inputs": text, "parameters": {"max_length": max_length}}
-
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list) and len(data) > 0:
-            summary = data[0].get("summary_text", "")
-            result = _standardize_response(
-                answer=f"Summary: {summary}",
-                citations=["https://huggingface.co/facebook/bart-large-cnn"],
-                metadata={"original_length": len(text), "summary": summary}
-            )
-        else:
-            result = _error_response("Summarization failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face summarization API error: {e}")
-        return _error_response(f"Failed to summarize: {str(e)}")
-
-
 @router.get("/hf/question_answering")
-def hf_question_answering(
-    question: str = Query(..., description="Question to answer"),
-    context: str = Query(..., description="Context containing the answer")
-) -> Dict[str, Any]:
-    """
-    Hugging Face question answering.
-
-    Args:
-        question: Question to answer
-        context: Context containing the answer
-
-    Returns:
-        Standardized response with answer
-    """
-    cache_key = _cache_key("hf:qa", {"question": question, "context": context})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
-        payload = {"inputs": {"question": question, "context": context}}
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        answer = data.get("answer", "")
-        score = data.get("score", 0)
-
-        if answer:
-            result = _standardize_response(
-                answer=f"Answer: {answer} (confidence: {score:.2%})",
-                citations=["https://huggingface.co/deepset/roberta-base-squad2"],
-                metadata={"question": question, "answer": answer, "score": score}
-            )
-        else:
-            result = _error_response("Question answering failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face QA API error: {e}")
-        return _error_response(f"Failed to answer question: {str(e)}")
-
-
 @router.get("/hf/ner")
-def hf_ner(
-    text: str = Query(..., description="Text for named entity recognition")
-) -> Dict[str, Any]:
-    """
-    Hugging Face named entity recognition.
-
-    Args:
-        text: Text to analyze
-
-    Returns:
-        Standardized response with named entities
-    """
-    cache_key = _cache_key("hf:ner", {"text": text})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        url = "https://api-inference.huggingface.co/models/dbmdz/bert-large-cased-finetuned-conll03-english"
-        payload = {"inputs": text}
-
-        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list):
-            entities = []
-            for entity in data:
-                word = entity.get("word", "")
-                entity_type = entity.get("entity_group", entity.get("entity", ""))
-                score = entity.get("score", 0)
-                entities.append(f"{word} ({entity_type}, {score:.2%})")
-
-            result = _standardize_response(
-                answer=f"Named entities: {'; '.join(entities)}",
-                citations=["https://huggingface.co/dbmdz/bert-large-cased-finetuned-conll03-english"],
-                metadata={"text": text, "entities": data}
-            )
-        else:
-            result = _error_response("NER failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face NER API error: {e}")
-        return _error_response(f"Failed to recognize entities: {str(e)}")
-
-
 @router.get("/hf/image_classification")
-def hf_image_classification(
-    image_url: str = Query(..., description="URL of image to classify")
-) -> Dict[str, Any]:
-    """
-    Hugging Face image classification.
-
-    Args:
-        image_url: URL of image to classify
-
-    Returns:
-        Standardized response with image classification
-    """
-    cache_key = _cache_key("hf:image_classification", {"image_url": image_url})
-    if cached := _cache_get(cache_key):
-        return cached
-
-    try:
-        # First, download the image
-        img_response = requests.get(image_url, timeout=DEFAULT_TIMEOUT)
-        img_response.raise_for_status()
-
-        url = "https://api-inference.huggingface.co/models/google/vit-base-patch16-224"
-
-        response = requests.post(url, data=img_response.content, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        if isinstance(data, list):
-            labels = []
-            for item in data[:5]:
-                label = item.get("label", "")
-                score = item.get("score", 0)
-                labels.append(f"{label} ({score:.2%})")
-
-            result = _standardize_response(
-                answer=f"Image classification: {'; '.join(labels)}",
-                citations=["https://huggingface.co/google/vit-base-patch16-224", image_url],
-                metadata={"image_url": image_url, "classifications": data[:5]}
-            )
-        else:
-            result = _error_response("Image classification failed")
-
-        _cache_set(cache_key, result, CACHE_TTL_LONG)
-        return result
-
-    except requests.RequestException as e:
-        logger.error(f"Hugging Face image classification API error: {e}")
-        return _error_response(f"Failed to classify image: {str(e)}")
-
-
-# ==================== OLLAMA MODELS ====================
-
 @router.get("/ollama/llama3_8b")
 def ollama_llama3_8b(
     prompt: str = Query(..., description="Prompt for Llama 3.1 8B"),
@@ -2924,3 +2571,1769 @@ def ollama_deepseek_coder(
     except requests.RequestException as e:
         logger.error(f"Ollama Deepseek Coder API error: {e}")
         return _error_response(f"Failed to generate with Deepseek Coder: {str(e)}")
+
+
+# ============================================================================
+# PHASE 1: NEW ENTERTAINMENT, FOOD, KNOWLEDGE & QUOTES APIS
+# ============================================================================
+
+# ------------------------------
+# Entertainment APIs (5)
+# ------------------------------
+
+@router.get("/entertainment/cat_facts")
+def cat_facts() -> Dict[str, Any]:
+    """
+    Random cat facts from Cat Facts API.
+    
+    Returns:
+        Standardized response with random cat fact
+    """
+    try:
+        url = "https://catfact.ninja/fact"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        fact = data.get("fact", "")
+        
+        result = _standardize_response(
+            answer=f"Cat Fact: {fact}",
+            citations=["https://catfact.ninja"],
+            metadata={"length": data.get("length", 0)}
+        )
+        
+        _cache_set(_cache_key("cat:facts", {}), result, 3600)  # Cache for 1 hour
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Cat Facts API error: {e}")
+        return _error_response(f"Failed to fetch cat fact: {str(e)}")
+
+
+@router.get("/entertainment/dog_images")
+def dog_images(
+    breed: Optional[str] = Query(None, description="Specific dog breed (optional)")
+) -> Dict[str, Any]:
+    """
+    Random dog images from Dog CEO API.
+    
+    Args:
+        breed: Optional specific breed (e.g., 'husky', 'retriever')
+    
+    Returns:
+        Standardized response with dog image URL
+    """
+    try:
+        if breed:
+            url = f"https://dog.ceo/api/breed/{breed.lower()}/images/random"
+        else:
+            url = "https://dog.ceo/api/breeds/image/random"
+            
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("status") == "success":
+            image_url = data.get("message", "")
+            
+            result = _standardize_response(
+                answer=f"Random dog image: {image_url}",
+                citations=["https://dog.ceo/dog-api/"],
+                metadata={"breed": breed or "random", "image_url": image_url}
+            )
+            
+            _cache_set(_cache_key("dog:images", {"breed": breed}), result, 3600)
+            return result
+        else:
+            return _error_response("Failed to fetch dog image")
+            
+    except requests.RequestException as e:
+        logger.error(f"Dog CEO API error: {e}")
+        return _error_response(f"Failed to fetch dog image: {str(e)}")
+
+
+@router.get("/entertainment/pokemon")
+def pokemon_data(
+    name: str = Query(..., description="Pokemon name or ID")
+) -> Dict[str, Any]:
+    """
+    Pokemon data from PokeAPI.
+    
+    Args:
+        name: Pokemon name (e.g., 'pikachu') or ID number
+    
+    Returns:
+        Standardized response with Pokemon details
+    """
+    cache_key = _cache_key("pokemon:data", {"name": name})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://pokeapi.co/api/v2/pokemon/{name.lower()}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        poke_name = data.get("name", "").capitalize()
+        types = [t["type"]["name"] for t in data.get("types", [])]
+        height = data.get("height", 0) / 10  # Convert to meters
+        weight = data.get("weight", 0) / 10  # Convert to kg
+        abilities = [a["ability"]["name"] for a in data.get("abilities", [])]
+        
+        answer = f"""Pokemon: {poke_name}
+Type(s): {', '.join(types)}
+Height: {height}m
+Weight: {weight}kg
+Abilities: {', '.join(abilities)}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://pokeapi.co"],
+            metadata={
+                "id": data.get("id"),
+                "name": poke_name,
+                "types": types,
+                "sprite": data.get("sprites", {}).get("front_default")
+            }
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"PokeAPI error: {e}")
+        return _error_response(f"Failed to fetch Pokemon data: {str(e)}")
+
+
+@router.get("/entertainment/rick_morty")
+def rick_morty_characters(
+    name: Optional[str] = Query(None, description="Character name to search")
+) -> Dict[str, Any]:
+    """
+    Rick and Morty character data.
+    
+    Args:
+        name: Optional character name to search for
+    
+    Returns:
+        Standardized response with character information
+    """
+    try:
+        if name:
+            url = f"https://rickandmortyapi.com/api/character/?name={name}"
+        else:
+            # Get a random character (ID between 1-826)
+            import random
+            char_id = random.randint(1, 826)
+            url = f"https://rickandmortyapi.com/api/character/{char_id}"
+            
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Handle search results vs single character
+        if "results" in data:
+            if data["results"]:
+                char = data["results"][0]
+            else:
+                return _error_response(f"No character found with name: {name}")
+        else:
+            char = data
+            
+        answer = f"""Character: {char.get('name')}
+Status: {char.get('status')}
+Species: {char.get('species')}
+Gender: {char.get('gender')}
+Origin: {char.get('origin', {}).get('name')}
+Location: {char.get('location', {}).get('name')}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://rickandmortyapi.com"],
+            metadata={
+                "id": char.get("id"),
+                "name": char.get("name"),
+                "image": char.get("image")
+            }
+        )
+        
+        _cache_set(_cache_key("rick_morty:char", {"name": name}), result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Rick and Morty API error: {e}")
+        return _error_response(f"Failed to fetch character data: {str(e)}")
+
+
+@router.get("/entertainment/breaking_bad")
+def breaking_bad_quotes() -> Dict[str, Any]:
+    """
+    Random Breaking Bad quote.
+    
+    Returns:
+        Standardized response with quote and author
+    """
+    try:
+        url = "https://api.breakingbadquotes.xyz/v1/quotes"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data and len(data) > 0:
+            quote_data = data[0]
+            quote = quote_data.get("quote", "")
+            author = quote_data.get("author", "")
+            
+            result = _standardize_response(
+                answer=f'"{quote}" - {author}',
+                citations=["https://breakingbadapi.com"],
+                metadata={"author": author}
+            )
+            
+            return result
+        else:
+            return _error_response("No quote returned")
+            
+    except requests.RequestException as e:
+        logger.error(f"Breaking Bad API error: {e}")
+        return _error_response(f"Failed to fetch quote: {str(e)}")
+
+
+# ------------------------------
+# Food & Drink APIs (3)
+# ------------------------------
+
+@router.get("/food/meals")
+def themealdb_recipes(
+    query: Optional[str] = Query(None, description="Meal name to search"),
+    category: Optional[str] = Query(None, description="Meal category (e.g., 'Seafood', 'Vegetarian')")
+) -> Dict[str, Any]:
+    """
+    Recipe database from TheMealDB.
+    
+    Args:
+        query: Meal name to search for
+        category: Optional category filter
+    
+    Returns:
+        Standardized response with recipe details
+    """
+    try:
+        if query:
+            url = f"https://www.themealdb.com/api/json/v1/1/search.php?s={query}"
+        elif category:
+            url = f"https://www.themealdb.com/api/json/v1/1/filter.php?c={category}"
+        else:
+            # Random meal
+            url = "https://www.themealdb.com/api/json/v1/1/random.php"
+            
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        meals = data.get("meals")
+        if not meals:
+            return _error_response("No meals found")
+            
+        meal = meals[0]
+        
+        # Build ingredients list
+        ingredients = []
+        for i in range(1, 21):
+            ingredient = meal.get(f"strIngredient{i}")
+            measure = meal.get(f"strMeasure{i}")
+            if ingredient and ingredient.strip():
+                ingredients.append(f"{measure} {ingredient}".strip())
+        
+        answer = f"""Meal: {meal.get('strMeal')}
+Category: {meal.get('strCategory')}
+Area: {meal.get('strArea')}
+
+Ingredients:
+{chr(10).join('- ' + ing for ing in ingredients[:10])}
+
+Instructions: {meal.get('strInstructions', '')[:200]}..."""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=[meal.get('strSource') or "https://www.themealdb.com"],
+            metadata={
+                "meal_id": meal.get("idMeal"),
+                "image": meal.get("strMealThumb"),
+                "youtube": meal.get("strYoutube")
+            }
+        )
+        
+        _cache_set(_cache_key("meals:recipe", {"q": query, "cat": category}), result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"TheMealDB API error: {e}")
+        return _error_response(f"Failed to fetch recipe: {str(e)}")
+
+
+@router.get("/food/cocktails")
+def cocktaildb_recipes(
+    query: Optional[str] = Query(None, description="Cocktail name to search")
+) -> Dict[str, Any]:
+    """
+    Cocktail recipes from TheCocktailDB.
+    
+    Args:
+        query: Cocktail name to search for
+    
+    Returns:
+        Standardized response with cocktail recipe
+    """
+    try:
+        if query:
+            url = f"https://www.thecocktaildb.com/api/json/v1/1/search.php?s={query}"
+        else:
+            # Random cocktail
+            url = "https://www.thecocktaildb.com/api/json/v1/1/random.php"
+            
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        drinks = data.get("drinks")
+        if not drinks:
+            return _error_response("No cocktails found")
+            
+        drink = drinks[0]
+        
+        # Build ingredients list
+        ingredients = []
+        for i in range(1, 16):
+            ingredient = drink.get(f"strIngredient{i}")
+            measure = drink.get(f"strMeasure{i}")
+            if ingredient and ingredient.strip():
+                ingredients.append(f"{measure or ''} {ingredient}".strip())
+        
+        answer = f"""Cocktail: {drink.get('strDrink')}
+Category: {drink.get('strCategory')}
+Glass: {drink.get('strGlass')}
+Alcoholic: {drink.get('strAlcoholic')}
+
+Ingredients:
+{chr(10).join('- ' + ing for ing in ingredients)}
+
+Instructions: {drink.get('strInstructions')}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://www.thecocktaildb.com"],
+            metadata={
+                "drink_id": drink.get("idDrink"),
+                "image": drink.get("strDrinkThumb")
+            }
+        )
+        
+        _cache_set(_cache_key("cocktails:recipe", {"q": query}), result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"CocktailDB API error: {e}")
+        return _error_response(f"Failed to fetch cocktail recipe: {str(e)}")
+
+
+@router.get("/food/fruits")
+def fruityvice_nutrition(
+    fruit: str = Query(..., description="Fruit name (e.g., 'banana', 'apple')")
+) -> Dict[str, Any]:
+    """
+    Fruit nutrition data from Fruityvice.
+    
+    Args:
+        fruit: Fruit name to get nutrition info for
+    
+    Returns:
+        Standardized response with nutrition facts
+    """
+    cache_key = _cache_key("fruit:nutrition", {"fruit": fruit})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://fruityvice.com/api/fruit/{fruit.lower()}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        nutritions = data.get("nutritions", {})
+        
+        answer = f"""Fruit: {data.get('name')}
+Family: {data.get('family')}
+Order: {data.get('order')}
+Genus: {data.get('genus')}
+
+Nutritional Information (per 100g):
+- Calories: {nutritions.get('calories')} kcal
+- Fat: {nutritions.get('fat')}g
+- Sugar: {nutritions.get('sugar')}g
+- Carbohydrates: {nutritions.get('carbohydrates')}g
+- Protein: {nutritions.get('protein')}g"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://fruityvice.com"],
+            metadata={"fruit": data.get("name"), "nutritions": nutritions}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Fruityvice API error: {e}")
+        return _error_response(f"Failed to fetch fruit data: {str(e)}")
+
+
+# ------------------------------
+# Knowledge & Education APIs (4)
+# ------------------------------
+
+@router.get("/knowledge/universities")
+def universities_search(
+    country: Optional[str] = Query(None, description="Country name or code"),
+    name: Optional[str] = Query(None, description="University name to search")
+) -> Dict[str, Any]:
+    """
+    World universities database.
+    
+    Args:
+        country: Country name (e.g., 'United States') or code (e.g., 'US')
+        name: University name to search
+    
+    Returns:
+        Standardized response with university information
+    """
+    try:
+        params = {}
+        if country:
+            params["country"] = country
+        if name:
+            params["name"] = name
+            
+        if not params:
+            return _error_response("Please provide either country or name parameter")
+            
+        url = "http://universities.hipolabs.com/search"
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if not data:
+            return _error_response("No universities found")
+            
+        # Return top 5 results
+        universities = data[:5]
+        
+        results = []
+        for uni in universities:
+            results.append(f"""
+{uni.get('name')}
+- Country: {uni.get('country')}
+- Website: {', '.join(uni.get('web_pages', []))}
+- Domains: {', '.join(uni.get('domains', []))}""")
+        
+        answer = f"Found {len(data)} universities. Showing top {len(universities)}:" + "\n".join(results)
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=[universities[0].get('web_pages', [''])[0] if universities[0].get('web_pages') else "http://universities.hipolabs.com"],
+            metadata={"total_results": len(data), "displayed": len(universities)}
+        )
+        
+        _cache_set(_cache_key("universities:search", params), result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Universities API error: {e}")
+        return _error_response(f"Failed to fetch universities: {str(e)}")
+
+
+@router.get("/knowledge/zipcode")
+def zippopotam_lookup(
+    country: str = Query(..., description="Country code (e.g., 'US', 'GB')"),
+    zipcode: str = Query(..., description="Postal/ZIP code")
+) -> Dict[str, Any]:
+    """
+    Zip code / postal code lookup via Zippopotam.
+    
+    Args:
+        country: Country code (ISO 3166-1 alpha-2)
+        zipcode: Postal or ZIP code
+    
+    Returns:
+        Standardized response with location details
+    """
+    cache_key = _cache_key("zipcode:lookup", {"country": country, "zip": zipcode})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"http://api.zippopotam.us/{country.upper()}/{zipcode}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        places = data.get("places", [])
+        
+        if places:
+            place = places[0]
+            answer = f"""ZIP/Postal Code: {data.get('post code')}
+Country: {data.get('country')} ({data.get('country abbreviation')})
+Place: {place.get('place name')}
+State: {place.get('state')} ({place.get('state abbreviation')})
+Latitude: {place.get('latitude')}
+Longitude: {place.get('longitude')}"""
+        else:
+            answer = f"ZIP code {zipcode} found in {data.get('country')}, but no place details available"
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["http://www.zippopotam.us"],
+            metadata={
+                "post_code": data.get("post code"),
+                "country": data.get("country"),
+                "places": places
+            }
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Zippopotam API error: {e}")
+        return _error_response(f"Failed to lookup ZIP code: {str(e)}")
+
+
+@router.get("/knowledge/agify")
+def agify_predict_age(
+    name: str = Query(..., description="First name to predict age from")
+) -> Dict[str, Any]:
+    """
+    Predict age based on first name using Agify.io.
+    
+    Args:
+        name: First name to analyze
+    
+    Returns:
+        Standardized response with age prediction
+    """
+    cache_key = _cache_key("agify:age", {"name": name})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://api.agify.io/?name={name}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        age = data.get("age")
+        count = data.get("count", 0)
+        
+        if age:
+            answer = f"""Name: {data.get('name')}
+Predicted Age: {age} years old
+Confidence: Based on {count:,} data points"""
+        else:
+            answer = f"Unable to predict age for name: {name}"
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://agify.io"],
+            metadata={"name": name, "age": age, "count": count}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Agify API error: {e}")
+        return _error_response(f"Failed to predict age: {str(e)}")
+
+
+@router.get("/knowledge/nationalize")
+def nationalize_predict_nationality(
+    name: str = Query(..., description="First name to predict nationality from")
+) -> Dict[str, Any]:
+    """
+    Predict nationality based on first name using Nationalize.io.
+    
+    Args:
+        name: First name to analyze
+    
+    Returns:
+        Standardized response with nationality predictions
+    """
+    cache_key = _cache_key("nationalize:country", {"name": name})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://api.nationalize.io/?name={name}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        countries = data.get("country", [])
+        
+        if countries:
+            # Sort by probability
+            countries_sorted = sorted(countries, key=lambda x: x.get("probability", 0), reverse=True)
+            
+            predictions = []
+            for country in countries_sorted[:5]:
+                country_id = country.get("country_id")
+                probability = country.get("probability", 0) * 100
+                predictions.append(f"- {country_id}: {probability:.1f}% probability")
+            
+            answer = f"""Name: {data.get('name')}
+Predicted Nationalities:
+{chr(10).join(predictions)}"""
+        else:
+            answer = f"Unable to predict nationality for name: {name}"
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://nationalize.io"],
+            metadata={"name": name, "countries": countries}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Nationalize API error: {e}")
+        return _error_response(f"Failed to predict nationality: {str(e)}")
+
+
+# ------------------------------
+# Quotes & Advice APIs (3)
+# ------------------------------
+
+@router.get("/quotes/advice")
+def adviceslip_random() -> Dict[str, Any]:
+    """
+    Random advice from Advice Slip API.
+    
+    Returns:
+        Standardized response with random advice
+    """
+    try:
+        url = "https://api.adviceslip.com/advice"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        slip = data.get("slip", {})
+        advice = slip.get("advice", "")
+        
+        result = _standardize_response(
+            answer=f"Advice: {advice}",
+            citations=["https://adviceslip.com"],
+            metadata={"advice_id": slip.get("id")}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Advice Slip API error: {e}")
+        return _error_response(f"Failed to fetch advice: {str(e)}")
+
+
+@router.get("/quotes/quotable")
+def quotable_random(
+    tags: Optional[str] = Query(None, description="Comma-separated tags (e.g., 'wisdom,inspirational')")
+) -> Dict[str, Any]:
+    """
+    Random quotes from Quotable API.
+    
+    Args:
+        tags: Optional tags to filter quotes
+    
+    Returns:
+        Standardized response with random quote
+    """
+    try:
+        url = "https://api.quotable.io/random"
+        params = {}
+        if tags:
+            params["tags"] = tags
+            
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        content = data.get("content", "")
+        author = data.get("author", "")
+        quote_tags = data.get("tags", [])
+        
+        answer = f'"{content}" - {author}'
+        if quote_tags:
+            answer += f"\n\nTags: {', '.join(quote_tags)}"
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://quotable.io"],
+            metadata={
+                "author": author,
+                "tags": quote_tags,
+                "length": data.get("length")
+            }
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Quotable API error: {e}")
+        return _error_response(f"Failed to fetch quote: {str(e)}")
+
+
+@router.get("/quotes/zenquotes")
+def zenquotes_random() -> Dict[str, Any]:
+    """
+    Inspirational quotes from ZenQuotes API.
+    
+    Returns:
+        Standardized response with inspirational quote
+    """
+    try:
+        url = "https://zenquotes.io/api/random"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data and len(data) > 0:
+            quote_data = data[0]
+            quote = quote_data.get("q", "")
+            author = quote_data.get("a", "")
+            
+            result = _standardize_response(
+                answer=f'"{quote}" - {author}',
+                citations=["https://zenquotes.io"],
+                metadata={"author": author}
+            )
+            
+            return result
+        else:
+            return _error_response("No quote returned")
+            
+    except requests.RequestException as e:
+        logger.error(f"ZenQuotes API error: {e}")
+        return _error_response(f"Failed to fetch quote: {str(e)}")
+
+
+
+# ============================================================================
+# PHASE 2: UTILITY, SCIENCE, MATH & LANGUAGE APIS
+# ============================================================================
+
+# ------------------------------
+# Fun & Games APIs (8)
+# ------------------------------
+
+@router.get("/fun/numbers")
+def numbers_trivia(
+    number: str = Query(..., description="Number to get trivia about (or 'random')")
+) -> Dict[str, Any]:
+    """
+    Number trivia from Numbers API.
+    
+    Args:
+        number: Number to get trivia about, or 'random' for random number
+    
+    Returns:
+        Standardized response with number trivia
+    """
+    cache_key = _cache_key("numbers:trivia", {"number": number})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"http://numbersapi.com/{number}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        trivia = response.text
+        
+        result = _standardize_response(
+            answer=f"Number Trivia: {trivia}",
+            citations=["http://numbersapi.com"],
+            metadata={"number": number}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Numbers API error: {e}")
+        return _error_response(f"Failed to fetch number trivia: {str(e)}")
+
+
+@router.get("/fun/useless_facts")
+def useless_facts() -> Dict[str, Any]:
+    """
+    Random useless facts.
+    
+    Returns:
+        Standardized response with random useless fact
+    """
+    try:
+        url = "https://uselessfacts.jsph.pl/random.json?language=en"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        fact = data.get("text", "")
+        
+        result = _standardize_response(
+            answer=f"Useless Fact: {fact}",
+            citations=["https://uselessfacts.jsph.pl"],
+            metadata={"id": data.get("id")}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Useless Facts API error: {e}")
+        return _error_response(f"Failed to fetch useless fact: {str(e)}")
+
+
+@router.get("/fun/chuck_norris")
+def chuck_norris_jokes(
+    category: Optional[str] = Query(None, description="Joke category (optional)")
+) -> Dict[str, Any]:
+    """
+    Chuck Norris jokes from official API.
+    
+    Args:
+        category: Optional category filter
+    
+    Returns:
+        Standardized response with Chuck Norris joke
+    """
+    try:
+        if category:
+            url = f"https://api.chucknorris.io/jokes/random?category={category}"
+        else:
+            url = "https://api.chucknorris.io/jokes/random"
+            
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        joke = data.get("value", "")
+        
+        result = _standardize_response(
+            answer=f"Chuck Norris Joke: {joke}",
+            citations=["https://api.chucknorris.io"],
+            metadata={"category": data.get("categories", [])}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Chuck Norris API error: {e}")
+        return _error_response(f"Failed to fetch Chuck Norris joke: {str(e)}")
+
+
+@router.get("/fun/kanye_quotes")
+def kanye_quotes() -> Dict[str, Any]:
+    """
+    Random Kanye West quotes.
+    
+    Returns:
+        Standardized response with Kanye quote
+    """
+    try:
+        url = "https://api.kanye.rest/"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        quote = data.get("quote", "")
+        
+        result = _standardize_response(
+            answer=f'Kanye West: "{quote}"',
+            citations=["https://kanye.rest"],
+            metadata={}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Kanye REST API error: {e}")
+        return _error_response(f"Failed to fetch Kanye quote: {str(e)}")
+
+
+@router.get("/fun/corporate_bs")
+def corporate_bs() -> Dict[str, Any]:
+    """
+    Corporate buzzword generator.
+    
+    Returns:
+        Standardized response with corporate buzzword phrase
+    """
+    try:
+        url = "https://corporatebs-generator.sameerkumar.website/"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        phrase = data.get("phrase", "")
+        
+        result = _standardize_response(
+            answer=f"Corporate BS: {phrase}",
+            citations=["https://corporatebs-generator.sameerkumar.website"],
+            metadata={}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Corporate BS API error: {e}")
+        return _error_response(f"Failed to fetch corporate BS: {str(e)}")
+
+
+@router.get("/fun/yesno")
+def yesno_answer() -> Dict[str, Any]:
+    """
+    Random yes/no answer with GIF.
+    
+    Returns:
+        Standardized response with yes/no answer
+    """
+    try:
+        url = "https://yesno.wtf/api"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        answer = data.get("answer", "").upper()
+        image = data.get("image", "")
+        
+        result = _standardize_response(
+            answer=f"Answer: {answer}",
+            citations=["https://yesno.wtf"],
+            metadata={"answer": answer, "image": image}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"YesNo API error: {e}")
+        return _error_response(f"Failed to get yes/no answer: {str(e)}")
+
+
+@router.get("/fun/coinflip")
+def coinflip() -> Dict[str, Any]:
+    """
+    Coin flip simulation.
+    
+    Returns:
+        Standardized response with heads or tails
+    """
+    import random
+    
+    result_value = random.choice(["Heads", "Tails"])
+    
+    result = _standardize_response(
+        answer=f"Coin Flip Result: {result_value}",
+        citations=["internal"],
+        metadata={"result": result_value}
+    )
+    
+    return result
+
+
+@router.get("/fun/dice_roll")
+def dice_roll(
+    sides: int = Query(6, description="Number of sides on the die"),
+    count: int = Query(1, description="Number of dice to roll")
+) -> Dict[str, Any]:
+    """
+    Dice roll simulation.
+    
+    Args:
+        sides: Number of sides on each die (default: 6)
+        count: Number of dice to roll (default: 1)
+    
+    Returns:
+        Standardized response with dice roll results
+    """
+    import random
+    
+    if count > 20:
+        return _error_response("Maximum 20 dice allowed")
+    if sides < 2 or sides > 100:
+        return _error_response("Sides must be between 2 and 100")
+    
+    rolls = [random.randint(1, sides) for _ in range(count)]
+    total = sum(rolls)
+    
+    answer = f"Rolled {count}d{sides}: {rolls}\nTotal: {total}"
+    
+    result = _standardize_response(
+        answer=answer,
+        citations=["internal"],
+        metadata={"rolls": rolls, "total": total, "sides": sides, "count": count}
+    )
+    
+    return result
+
+
+# ------------------------------
+# Utility APIs (7)
+# ------------------------------
+
+@router.get("/utilities/ipify")
+def ipify_public_ip() -> Dict[str, Any]:
+    """
+    Get public IP address using ipify.
+    
+    Returns:
+        Standardized response with public IP
+    """
+    try:
+        url = "https://api.ipify.org?format=json"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        ip = data.get("ip", "")
+        
+        result = _standardize_response(
+            answer=f"Your Public IP: {ip}",
+            citations=["https://www.ipify.org"],
+            metadata={"ip": ip}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Ipify API error: {e}")
+        return _error_response(f"Failed to get public IP: {str(e)}")
+
+
+@router.get("/utilities/uuid")
+def uuid_generator(
+    count: int = Query(1, description="Number of UUIDs to generate (max 10)")
+) -> Dict[str, Any]:
+    """
+    Generate UUID(s).
+    
+    Args:
+        count: Number of UUIDs to generate
+    
+    Returns:
+        Standardized response with UUID(s)
+    """
+    import uuid
+    
+    if count > 10:
+        return _error_response("Maximum 10 UUIDs allowed")
+    
+    uuids = [str(uuid.uuid4()) for _ in range(count)]
+    
+    if count == 1:
+        answer = f"UUID: {uuids[0]}"
+    else:
+        answer = f"Generated {count} UUIDs:\n" + "\n".join(f"{i+1}. {u}" for i, u in enumerate(uuids))
+    
+    result = _standardize_response(
+        answer=answer,
+        citations=["internal"],
+        metadata={"uuids": uuids, "count": count}
+    )
+    
+    return result
+
+
+@router.get("/utilities/color_info")
+def color_info(
+    color: str = Query(..., description="Color hex code (without #) or name")
+) -> Dict[str, Any]:
+    """
+    Get color information from The Color API.
+    
+    Args:
+        color: Color hex code (e.g., 'FF5733') or name (e.g., 'red')
+    
+    Returns:
+        Standardized response with color details
+    """
+    cache_key = _cache_key("color:info", {"color": color})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        # Remove # if present
+        color = color.replace("#", "")
+        
+        url = f"https://www.thecolorapi.com/id?hex={color}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        hex_value = data.get("hex", {}).get("value", "")
+        rgb = data.get("rgb", {}).get("value", "")
+        name = data.get("name", {}).get("value", "")
+        
+        answer = f"""Color: {name}
+HEX: {hex_value}
+RGB: {rgb}
+HSL: {data.get("hsl", {}).get("value", "")}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://www.thecolorapi.com"],
+            metadata={"hex": hex_value, "name": name}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Color API error: {e}")
+        return _error_response(f"Failed to get color info: {str(e)}")
+
+
+@router.get("/utilities/base64_encode")
+def base64_encode(
+    text: str = Query(..., description="Text to encode")
+) -> Dict[str, Any]:
+    """
+    Encode text to Base64.
+    
+    Args:
+        text: Text to encode
+    
+    Returns:
+        Standardized response with Base64 encoded text
+    """
+    import base64
+    
+    try:
+        encoded = base64.b64encode(text.encode('utf-8')).decode('utf-8')
+        
+        result = _standardize_response(
+            answer=f"Base64 Encoded: {encoded}",
+            citations=["internal"],
+            metadata={"original": text, "encoded": encoded}
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Base64 encoding error: {e}")
+        return _error_response(f"Failed to encode: {str(e)}")
+
+
+@router.get("/utilities/base64_decode")
+def base64_decode(
+    encoded: str = Query(..., description="Base64 text to decode")
+) -> Dict[str, Any]:
+    """
+    Decode Base64 to text.
+    
+    Args:
+        encoded: Base64 encoded text to decode
+    
+    Returns:
+        Standardized response with decoded text
+    """
+    import base64
+    
+    try:
+        decoded = base64.b64decode(encoded.encode('utf-8')).decode('utf-8')
+        
+        result = _standardize_response(
+            answer=f"Decoded: {decoded}",
+            citations=["internal"],
+            metadata={"encoded": encoded, "decoded": decoded}
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Base64 decoding error: {e}")
+        return _error_response(f"Failed to decode: {str(e)}")
+
+
+@router.get("/utilities/httpbin_test")
+def httpbin_test(
+    endpoint: str = Query("get", description="Endpoint to test (get, post, headers, ip, user-agent)")
+) -> Dict[str, Any]:
+    """
+    HTTP request/response testing via httpbin.
+    
+    Args:
+        endpoint: Which httpbin endpoint to test
+    
+    Returns:
+        Standardized response with httpbin test results
+    """
+    try:
+        url = f"https://httpbin.org/{endpoint}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        result = _standardize_response(
+            answer=f"HTTPBin Test ({endpoint}): {str(data)[:200]}...",
+            citations=["https://httpbin.org"],
+            metadata={"endpoint": endpoint, "data": data}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"HTTPBin API error: {e}")
+        return _error_response(f"Failed to test with HTTPBin: {str(e)}")
+
+
+@router.get("/utilities/postman_echo")
+def postman_echo(
+    message: str = Query(..., description="Message to echo back")
+) -> Dict[str, Any]:
+    """
+    Echo service from Postman Echo API.
+    
+    Args:
+        message: Message to echo
+    
+    Returns:
+        Standardized response with echoed message
+    """
+    try:
+        url = "https://postman-echo.com/get"
+        params = {"message": message}
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        echoed = data.get("args", {}).get("message", "")
+        
+        result = _standardize_response(
+            answer=f"Echo: {echoed}",
+            citations=["https://postman-echo.com"],
+            metadata={"original": message, "echoed": echoed}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Postman Echo API error: {e}")
+        return _error_response(f"Failed to echo message: {str(e)}")
+
+
+# ------------------------------
+# Science & Math APIs (5)
+# ------------------------------
+
+@router.get("/science/newton_math")
+def newton_math(
+    operation: str = Query(..., description="Math operation (simplify, factor, derive, integrate, zeroes, area, cos, sin, tan, log, abs)"),
+    expression: str = Query(..., description="Math expression to compute")
+) -> Dict[str, Any]:
+    """
+    Symbolic math operations via Newton API.
+    
+    Args:
+        operation: Type of operation
+        expression: Math expression
+    
+    Returns:
+        Standardized response with math result
+    """
+    cache_key = _cache_key("newton:math", {"op": operation, "expr": expression})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://newton.now.sh/api/v2/{operation}/{expression}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        operation_name = data.get("operation", "")
+        expr = data.get("expression", "")
+        answer_value = data.get("result", "")
+        
+        answer = f"""Operation: {operation_name}
+Expression: {expr}
+Result: {answer_value}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://newton.now.sh"],
+            metadata={"operation": operation_name, "result": answer_value}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Newton Math API error: {e}")
+        return _error_response(f"Failed to compute math: {str(e)}")
+
+
+@router.get("/science/periodic_table")
+def periodic_table(
+    element: str = Query(..., description="Element symbol or name (e.g., 'H', 'Hydrogen')")
+) -> Dict[str, Any]:
+    """
+    Periodic table element data.
+    
+    Args:
+        element: Element symbol or name
+    
+    Returns:
+        Standardized response with element details
+    """
+    cache_key = _cache_key("periodic:element", {"element": element})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        # Try by symbol first, then by name
+        url = f"https://neelpatel05.pythonanywhere.com/element/symbol/{element.upper()}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        
+        if response.status_code == 404:
+            # Try by name
+            url = f"https://neelpatel05.pythonanywhere.com/element/name/{element.capitalize()}"
+            response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        
+        response.raise_for_status()
+        data = response.json()
+        
+        answer = f"""Element: {data.get('name')} ({data.get('symbol')})
+Atomic Number: {data.get('atomicNumber')}
+Atomic Mass: {data.get('atomicMass')}
+Category: {data.get('groupBlock')}
+Electron Configuration: {data.get('electronicConfiguration')}
+Discovered By: {data.get('discoveredBy', 'Unknown')}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://neelpatel05.pythonanywhere.com"],
+            metadata={
+                "name": data.get("name"),
+                "symbol": data.get("symbol"),
+                "atomicNumber": data.get("atomicNumber")
+            }
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Periodic Table API error: {e}")
+        return _error_response(f"Failed to get element data: {str(e)}")
+
+
+@router.get("/science/sunrise_sunset")
+def sunrise_sunset(
+    lat: float = Query(..., description="Latitude"),
+    lng: float = Query(..., description="Longitude"),
+    date: Optional[str] = Query(None, description="Date (YYYY-MM-DD), defaults to today")
+) -> Dict[str, Any]:
+    """
+    Sunrise and sunset times for a location.
+    
+    Args:
+        lat: Latitude
+        lng: Longitude
+        date: Optional date (defaults to today)
+    
+    Returns:
+        Standardized response with sunrise/sunset times
+    """
+    cache_key = _cache_key("sun:times", {"lat": lat, "lng": lng, "date": date})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        params = {"lat": lat, "lng": lng, "formatted": 0}
+        if date:
+            params["date"] = date
+            
+        url = "https://api.sunrise-sunset.org/json"
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("status") == "OK":
+            results = data.get("results", {})
+            
+            answer = f"""Sunrise: {results.get('sunrise')}
+Sunset: {results.get('sunset')}
+Solar Noon: {results.get('solar_noon')}
+Day Length: {results.get('day_length')} seconds
+Civil Twilight Begin: {results.get('civil_twilight_begin')}
+Civil Twilight End: {results.get('civil_twilight_end')}"""
+            
+            result = _standardize_response(
+                answer=answer,
+                citations=["https://sunrise-sunset.org"],
+                metadata={"lat": lat, "lng": lng, "results": results}
+            )
+            
+            _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
+            return result
+        else:
+            return _error_response("Invalid location or date")
+            
+    except requests.RequestException as e:
+        logger.error(f"Sunrise-Sunset API error: {e}")
+        return _error_response(f"Failed to get sunrise/sunset times: {str(e)}")
+
+
+@router.get("/science/random_user_data")
+def random_user_data(
+    gender: Optional[str] = Query(None, description="Gender filter (male/female)"),
+    nat: Optional[str] = Query(None, description="Nationality code (e.g., US, GB, FR)")
+) -> Dict[str, Any]:
+    """
+    Generate random user data from RandomUser API.
+    
+    Args:
+        gender: Optional gender filter
+        nat: Optional nationality code
+    
+    Returns:
+        Standardized response with random user data
+    """
+    try:
+        params = {}
+        if gender:
+            params["gender"] = gender
+        if nat:
+            params["nat"] = nat
+            
+        url = "https://randomuser.me/api/"
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("results"):
+            user = data["results"][0]
+            name = user.get("name", {})
+            location = user.get("location", {})
+            
+            answer = f"""Random User:
+Name: {name.get('title')} {name.get('first')} {name.get('last')}
+Gender: {user.get('gender')}
+Email: {user.get('email')}
+Phone: {user.get('phone')}
+Location: {location.get('city')}, {location.get('state')}, {location.get('country')}
+Age: {user.get('dob', {}).get('age')}"""
+            
+            result = _standardize_response(
+                answer=answer,
+                citations=["https://randomuser.me"],
+                metadata={"user": user}
+            )
+            
+            return result
+        else:
+            return _error_response("No user data returned")
+            
+    except requests.RequestException as e:
+        logger.error(f"RandomUser API error: {e}")
+        return _error_response(f"Failed to generate random user: {str(e)}")
+
+
+@router.get("/science/space_people")
+def space_people() -> Dict[str, Any]:
+    """
+    Get list of people currently in space.
+    
+    Returns:
+        Standardized response with astronauts in space
+    """
+    cache_key = _cache_key("space:people", {})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = "http://api.open-notify.org/astros.json"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        number = data.get("number", 0)
+        people = data.get("people", [])
+        
+        people_list = []
+        for person in people:
+            people_list.append(f"- {person.get('name')} ({person.get('craft')})")
+        
+        answer = f"""People in Space: {number}
+
+{chr(10).join(people_list)}"""
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["http://open-notify.org"],
+            metadata={"number": number, "people": people}
+        )
+        
+        _cache_set(cache_key, result, 3600)  # Cache for 1 hour
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Space People API error: {e}")
+        return _error_response(f"Failed to get astronauts in space: {str(e)}")
+
+
+# ------------------------------
+# Language & Text APIs (5)
+# ------------------------------
+
+@router.get("/language/lorem_ipsum")
+def lorem_ipsum(
+    paragraphs: int = Query(1, description="Number of paragraphs (1-10)"),
+    length: str = Query("medium", description="Length: short, medium, long")
+) -> Dict[str, Any]:
+    """
+    Generate Lorem Ipsum placeholder text.
+    
+    Args:
+        paragraphs: Number of paragraphs
+        length: Length per paragraph
+    
+    Returns:
+        Standardized response with Lorem Ipsum text
+    """
+    if paragraphs > 10:
+        return _error_response("Maximum 10 paragraphs allowed")
+        
+    try:
+        url = f"https://loripsum.net/api/{paragraphs}/{length}/plaintext"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        text = response.text
+        
+        result = _standardize_response(
+            answer=f"Lorem Ipsum ({paragraphs} paragraphs):\n\n{text}",
+            citations=["https://loripsum.net"],
+            metadata={"paragraphs": paragraphs, "length": length}
+        )
+        
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Lorem Ipsum API error: {e}")
+        return _error_response(f"Failed to generate Lorem Ipsum: {str(e)}")
+
+
+@router.get("/language/language_detect")
+def language_detect(
+    text: str = Query(..., description="Text to detect language")
+) -> Dict[str, Any]:
+    """
+    Detect language of text using LibreTranslate.
+    
+    Args:
+        text: Text to analyze
+    
+    Returns:
+        Standardized response with detected language
+    """
+    cache_key = _cache_key("lang:detect", {"text": text[:100]})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = "https://libretranslate.de/detect"
+        payload = {"q": text}
+        response = requests.post(url, json=payload, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data and len(data) > 0:
+            detected = data[0]
+            language = detected.get("language", "")
+            confidence = detected.get("confidence", 0) * 100
+            
+            answer = f"""Detected Language: {language}
+Confidence: {confidence:.1f}%"""
+            
+            result = _standardize_response(
+                answer=answer,
+                citations=["https://libretranslate.com"],
+                metadata={"language": language, "confidence": confidence}
+            )
+            
+            _cache_set(cache_key, result, CACHE_TTL_LONG)
+            return result
+        else:
+            return _error_response("Could not detect language")
+            
+    except requests.RequestException as e:
+        logger.error(f"Language Detection API error: {e}")
+        return _error_response(f"Failed to detect language: {str(e)}")
+
+
+@router.get("/language/word_definition")
+def word_definition(
+    word: str = Query(..., description="Word to define")
+) -> Dict[str, Any]:
+    """
+    Get word definition from Free Dictionary API.
+    
+    Args:
+        word: Word to look up
+    
+    Returns:
+        Standardized response with definition
+    """
+    cache_key = _cache_key("dict:define", {"word": word})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word.lower()}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data and len(data) > 0:
+            entry = data[0]
+            meanings = entry.get("meanings", [])
+            
+            definitions = []
+            for meaning in meanings[:3]:  # First 3 meanings
+                part_of_speech = meaning.get("partOfSpeech", "")
+                defs = meaning.get("definitions", [])
+                if defs:
+                    definition = defs[0].get("definition", "")
+                    definitions.append(f"({part_of_speech}) {definition}")
+            
+            phonetic = entry.get("phonetic", "")
+            
+            answer = f"""Word: {word}
+Phonetic: {phonetic}
+
+Definitions:
+{chr(10).join(f"{i+1}. {d}" for i, d in enumerate(definitions))}"""
+            
+            result = _standardize_response(
+                answer=answer,
+                citations=["https://dictionaryapi.dev"],
+                metadata={"word": word, "phonetic": phonetic}
+            )
+            
+            _cache_set(cache_key, result, CACHE_TTL_LONG)
+            return result
+        else:
+            return _error_response(f"No definition found for: {word}")
+            
+    except requests.RequestException as e:
+        logger.error(f"Dictionary API error: {e}")
+        return _error_response(f"Failed to get definition: {str(e)}")
+
+
+@router.get("/language/word_synonyms")
+def word_synonyms(
+    word: str = Query(..., description="Word to find synonyms for")
+) -> Dict[str, Any]:
+    """
+    Find synonyms using Datamuse API.
+    
+    Args:
+        word: Word to find synonyms for
+    
+    Returns:
+        Standardized response with synonyms
+    """
+    cache_key = _cache_key("synonyms:word", {"word": word})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = "https://api.datamuse.com/words"
+        params = {"rel_syn": word, "max": 20}
+        response = requests.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data:
+            synonyms = [item.get("word", "") for item in data[:15]]
+            
+            answer = f"""Synonyms for "{word}":
+
+{', '.join(synonyms)}"""
+            
+            result = _standardize_response(
+                answer=answer,
+                citations=["https://www.datamuse.com"],
+                metadata={"word": word, "synonyms": synonyms}
+            )
+            
+            _cache_set(cache_key, result, CACHE_TTL_LONG)
+            return result
+        else:
+            return _error_response(f"No synonyms found for: {word}")
+            
+    except requests.RequestException as e:
+        logger.error(f"Datamuse API error: {e}")
+        return _error_response(f"Failed to get synonyms: {str(e)}")
+
+
+@router.get("/language/gender_from_name")
+def gender_from_name(
+    name: str = Query(..., description="First name to predict gender from")
+) -> Dict[str, Any]:
+    """
+    Predict gender based on first name using Genderize.io.
+    
+    Args:
+        name: First name to analyze
+    
+    Returns:
+        Standardized response with gender prediction
+    """
+    cache_key = _cache_key("gender:name", {"name": name})
+    if cached := _cache_get(cache_key):
+        return cached
+        
+    try:
+        url = f"https://api.genderize.io/?name={name}"
+        response = requests.get(url, timeout=DEFAULT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        
+        gender = data.get("gender", "unknown")
+        probability = data.get("probability", 0) * 100
+        count = data.get("count", 0)
+        
+        if gender != "unknown":
+            answer = f"""Name: {data.get('name')}
+Predicted Gender: {gender.capitalize()}
+Probability: {probability:.1f}%
+Based on: {count:,} data points"""
+        else:
+            answer = f"Unable to predict gender for name: {name}"
+        
+        result = _standardize_response(
+            answer=answer,
+            citations=["https://genderize.io"],
+            metadata={"name": name, "gender": gender, "probability": probability}
+        )
+        
+        _cache_set(cache_key, result, CACHE_TTL_LONG)
+        return result
+        
+    except requests.RequestException as e:
+        logger.error(f"Genderize API error: {e}")
+        return _error_response(f"Failed to predict gender: {str(e)}")
+
+
+

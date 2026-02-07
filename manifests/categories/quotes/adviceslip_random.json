@@ -1,0 +1,25 @@
+{
+  "id": "adviceslip_random",
+  "name": "Advice Slip",
+  "description": "Random pieces of advice from Advice Slip API",
+  "category": "quotes",
+  "subcategory": "advice",
+  "tags": [
+    "advice",
+    "wisdom",
+    "quotes",
+    "inspiration"
+  ],
+  "capabilities": [
+    "entertainment",
+    "quotes",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/quotes/advice"
+}

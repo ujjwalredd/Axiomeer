@@ -1,0 +1,25 @@
+{
+  "id": "quotable_random",
+  "name": "Quotable",
+  "description": "Random quotes from famous people and authors",
+  "category": "quotes",
+  "subcategory": "inspirational",
+  "tags": [
+    "quotes",
+    "wisdom",
+    "inspiration",
+    "authors"
+  ],
+  "capabilities": [
+    "entertainment",
+    "quotes",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 300,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/quotes/quotable"
+}

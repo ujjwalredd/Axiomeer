@@ -1,0 +1,25 @@
+{
+  "id": "fruityvice_nutrition",
+  "name": "Fruityvice Nutrition",
+  "description": "Nutritional information and data for fruits",
+  "category": "food",
+  "subcategory": "nutrition",
+  "tags": [
+    "fruits",
+    "nutrition",
+    "health",
+    "food"
+  ],
+  "capabilities": [
+    "food",
+    "health",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 300,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/food/fruits"
+}

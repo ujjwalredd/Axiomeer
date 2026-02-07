@@ -12,6 +12,7 @@
   ],
   "capabilities": [
     "finance",
+    "cryptocurrency",
     "realtime",
     "citations"
   ],

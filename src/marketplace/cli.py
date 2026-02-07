@@ -3,6 +3,7 @@ import typer
 import requests
 import click
 import re
+import os
 from rich import print
 from rich.table import Table
 import json
@@ -52,22 +53,62 @@ _patch_click_make_metavar()
 app = typer.Typer(add_completion=False)
 
 
+def _get_headers():
+    """Get headers including API key if available."""
+    headers = {"Content-Type": "application/json"}
+    api_key = os.getenv("AXIOMEER_API_KEY") or os.getenv("API_KEY")
+    if api_key:
+        headers["X-API-Key"] = api_key
+    return headers
+
+
 def _post(path: str, payload: dict):
-    r = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=60)
-    if not r.ok:
-        print(f"[red]HTTP {r.status_code} for {path}[/red]")
-        try:
-            print(r.json())
-        except Exception:
-            print(r.text)
-    r.raise_for_status()
-    return r.json()
+    """Make authenticated POST request."""
+    headers = _get_headers()
+    try:
+        r = requests.post(f"{API_BASE_URL}{path}", json=payload, headers=headers, timeout=60)
+        if not r.ok:
+            print(f"[red]HTTP {r.status_code} for {path}[/red]")
+            if r.status_code == 401:
+                print("[yellow]Authentication required. Set your API key:[/yellow]")
+                print("[dim]export AXIOMEER_API_KEY=your_api_key_here[/dim]")
+                print("[dim]Or disable auth: export AUTH_ENABLED=false[/dim]")
+            try:
+                print(r.json())
+            except Exception:
+                print(r.text)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            print("\n[bold red]Authentication Error[/bold red]")
+            print("To use the CLI with authentication enabled:")
+            print("1. Create an API key at: http://localhost:8000/docs")
+            print("2. Set it: [cyan]export AXIOMEER_API_KEY=your_key[/cyan]")
+            print("3. Or disable auth in production by setting AUTH_ENABLED=false")
+            raise SystemExit(1)
+        raise
 
 
 def _get(path: str):
-    r = requests.get(f"{API_BASE_URL}{path}", timeout=20)
-    r.raise_for_status()
-    return r.json()
+    """Make authenticated GET request."""
+    headers = _get_headers()
+    try:
+        r = requests.get(f"{API_BASE_URL}{path}", headers=headers, timeout=20)
+        if not r.ok and r.status_code == 401:
+            print(f"[red]HTTP {r.status_code} for {path}[/red]")
+            print("[yellow]Authentication required. Set your API key:[/yellow]")
+            print("[dim]export AXIOMEER_API_KEY=your_api_key_here[/dim]")
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            print("\n[bold red]Authentication Error[/bold red]")
+            print("To use the CLI with authentication enabled:")
+            print("1. Create an API key at: http://localhost:8000/docs")
+            print("2. Set it: [cyan]export AXIOMEER_API_KEY=your_key[/cyan]")
+            raise SystemExit(1)
+        raise
 
 
 def _extract_location(question: str) -> str | None:
@@ -278,45 +319,12 @@ def shop(
 
     if execute_top:
         top = recs[0]
-        inputs: dict = {}
-        if top["app_id"] == "realtime_weather_agent":
-            location = _extract_location(task)
-            if location:
-                geo = _geocode_location(location)
-                if geo:
-                    inputs.update(geo)
-                else:
-                    print("[yellow]Warning:[/yellow] Could not geocode location for weather; executing without lat/lon.")
-            else:
-                print("[yellow]Warning:[/yellow] Could not extract location for weather; executing without lat/lon.")
-        elif top["app_id"] == "exchange_rates":
-            base, target = _extract_fx_pair(task)
-            if base:
-                inputs["base"] = base
-            if target:
-                inputs["target"] = target
-        elif top["app_id"] in {"wikipedia_search", "wikidata_search", "open_library", "rest_countries"}:
-            subject = _extract_subject(task)
-            if subject:
-                inputs["q"] = subject
-            else:
-                print("[yellow]Warning:[/yellow] Could not extract query subject; executing without query.")
-        elif top["app_id"] == "dictionary":
-            subject = _extract_subject(task)
-            if subject:
-                inputs["word"] = subject.split()[0]
-            else:
-                print("[yellow]Warning:[/yellow] Could not extract word; executing without word.")
-        elif top["app_id"] == "wikipedia_dumps":
-            lang = _extract_lang_code(task)
-            if lang:
-                inputs["lang"] = lang
-            else:
-                print("[yellow]Warning:[/yellow] Could not extract language code; executing without lang.")
+        # Let the provider/LLM extract parameters from the task intelligently
+        # No hardcoded extraction logic - if it can't understand, it should fail gracefully
         ex_req = {
             "app_id": top["app_id"],
             "task": task,
-            "inputs": inputs,
+            "inputs": {},  # Provider should extract from task
             "require_citations": citations,
         }
         ex = _post("/execute", ex_req)

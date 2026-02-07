@@ -1,10 +1,13 @@
 import json
+import logging
 import requests
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from time import perf_counter, time
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -36,9 +39,14 @@ from marketplace.storage.db import Base, engine, SessionLocal
 from marketplace.storage.models import AppListing
 from marketplace.storage.messages import ConversationMessage
 from marketplace.storage.runs import Run
+from marketplace.storage.users import User, UsageRecord
 
 # Import provider endpoints
 from apps.api.providers import router as providers_router
+
+# Import authentication router and dependencies
+from apps.api.auth_routes import router as auth_router
+from marketplace.auth.dependencies import check_user_rate_limit
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
@@ -82,6 +90,7 @@ app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
 
 # Include provider endpoints
 app.include_router(providers_router)
+app.include_router(auth_router)
 
 _cache_lock = Lock()
 _cache_store: dict[str, dict] = {}
@@ -323,7 +332,21 @@ def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db)):
 # ---- Shop ----
 
 @app.post("/shop", response_model=ShopResponse)
-def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
+def shop(
+    req: ShopRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_user_rate_limit)
+) -> ShopResponse:
+    # Log usage for authenticated users
+    if current_user.id > 0:
+        usage = UsageRecord(
+            user_id=current_user.id,
+            endpoint="/shop",
+            method="POST",
+            cost_usd=0.0
+        )
+        db.add(usage)
+        db.commit()
     cache_key = _cache_key(
         "shop",
         {
@@ -511,7 +534,21 @@ def shop(req: ShopRequest, db: Session = Depends(get_db)) -> ShopResponse:
 # ---- Execute ----
 
 @app.post("/execute", response_model=ExecuteResponse)
-def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteResponse:
+def execute(
+    req: ExecuteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_user_rate_limit)
+) -> ExecuteResponse:
+    # Log usage for authenticated users
+    if current_user.id > 0:
+        usage = UsageRecord(
+            user_id=current_user.id,
+            endpoint="/execute",
+            method="POST",
+            cost_usd=0.0  # Can be updated based on actual cost later
+        )
+        db.add(usage)
+        db.commit()
     t0 = perf_counter()
     now = datetime.now(timezone.utc).isoformat()
 
@@ -556,8 +593,27 @@ def execute(req: ExecuteRequest, db: Session = Depends(get_db)) -> ExecuteRespon
         run_id = log_run()
         return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
 
+    # Extract parameters from task using LLM if inputs are empty
+    final_inputs = req.inputs.copy() if req.inputs else {}
+
+    logger.info(f"Execute {req.app_id}: inputs={final_inputs}, task='{req.task}'")
+
+    if not final_inputs and req.task:
+        logger.info(f"Attempting LLM parameter extraction for {req.app_id}")
+        try:
+            from marketplace.core.llm import extract_parameters_from_task
+            extracted = extract_parameters_from_task(req.task, req.app_id, app_row.executor_url)
+            if extracted:
+                logger.info(f"Successfully extracted parameters: {extracted}")
+                final_inputs.update(extracted)
+            else:
+                logger.info(f"No parameters extracted from task")
+        except Exception as e:
+            # If extraction fails, continue with empty inputs and let provider handle it
+            logger.warning(f"Parameter extraction failed for {req.app_id}: {e}", exc_info=True)
+
     try:
-        r = requests.get(app_row.executor_url, params=req.inputs, timeout=EXECUTOR_TIMEOUT)
+        r = requests.get(app_row.executor_url, params=final_inputs, timeout=EXECUTOR_TIMEOUT)
         r.raise_for_status()
         payload = r.json()
     except Exception as e:

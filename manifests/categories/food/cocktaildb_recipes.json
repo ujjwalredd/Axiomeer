@@ -1,0 +1,25 @@
+{
+  "id": "cocktaildb_recipes",
+  "name": "TheCocktailDB Recipes",
+  "description": "Cocktail recipes and drink information",
+  "category": "food",
+  "subcategory": "drinks",
+  "tags": [
+    "cocktails",
+    "drinks",
+    "recipes",
+    "beverages"
+  ],
+  "capabilities": [
+    "food",
+    "search",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/food/cocktails"
+}
