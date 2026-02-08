@@ -1359,7 +1359,6 @@ Open Source - See [LICENSE](LICENSE) file
 - **API Documentation:** http://localhost:8000/docs (Swagger UI)
 - **Product Catalog:** [PDF Guide](docs/axiomeer_product_guide.pdf)
 - **Issues:** https://github.com/ujjwalredd/axiomeer/issues
-- **Discussions:** https://github.com/ujjwalredd/axiomeer/discussions
 
 ---
 
