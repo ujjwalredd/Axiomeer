@@ -581,7 +581,8 @@ def execute(
         run_id = log_run()
         return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
 
-    require_citations = bool(req.require_citations or app_row.citations_supported)
+    # Only require citations if explicitly requested by the client AND the API supports them
+    require_citations = bool(req.require_citations and app_row.citations_supported)
 
     if app_row.executor_type != "http_api":
         errors = ["Unsupported executor_type"]

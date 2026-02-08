@@ -21,5 +21,8 @@
   "latency_est_ms": 1400,
   "cost_est_usd": 0.0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/dbpedia/sparql"
+  "executor_url": "http://127.0.0.1:8000/providers/dbpedia/sparql",
+  "test_inputs": {
+    "query": "SELECT ?name WHERE { <http://dbpedia.org/resource/Python_(programming_language)> rdfs:label ?name } LIMIT 1"
+  }
 }

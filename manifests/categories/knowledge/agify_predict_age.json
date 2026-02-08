@@ -21,5 +21,8 @@
   "latency_est_ms": 200,
   "cost_est_usd": 0.0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/knowledge/agify"
+  "executor_url": "http://127.0.0.1:8000/providers/knowledge/agify",
+  "test_inputs": {
+    "name": "Michael"
+  }
 }

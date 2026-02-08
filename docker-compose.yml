@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: axiomeer
       POSTGRES_USER: axiomeer
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}  # REQUIRED: Set in .env file
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -22,10 +22,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://axiomeer:${DB_PASSWORD:-changeme}@db:5432/axiomeer
+      DATABASE_URL: postgresql://axiomeer:${DB_PASSWORD}@db:5432/axiomeer  # REQUIRED
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-CHANGE_THIS_IN_PRODUCTION}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}  # REQUIRED: Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
       RATE_LIMIT_FREE_TIER_PER_HOUR: "100"
       RATE_LIMIT_STARTER_TIER_PER_HOUR: "1000"

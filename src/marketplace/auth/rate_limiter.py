@@ -79,7 +79,9 @@ def check_rate_limit(
     # Check if limit exceeded
     if rate_record.request_count >= limit:
         # Calculate time until window resets
-        time_until_reset = (rate_record.window_start + timedelta(minutes=window_minutes)) - datetime.now(timezone.utc)
+        # Ensure window_start is timezone-aware
+        window_start_aware = rate_record.window_start.replace(tzinfo=timezone.utc) if rate_record.window_start.tzinfo is None else rate_record.window_start
+        time_until_reset = (window_start_aware + timedelta(minutes=window_minutes)) - datetime.now(timezone.utc)
         reset_seconds = int(time_until_reset.total_seconds())
 
         raise HTTPException(
@@ -140,7 +142,9 @@ def get_rate_limit_status(db: Session, user: User, endpoint: str = "global") -> 
         }
 
     remaining = max(0, limit - rate_record.request_count)
-    reset_at = rate_record.window_start + timedelta(hours=1)
+    # Ensure window_start is timezone-aware
+    window_start_aware = rate_record.window_start.replace(tzinfo=timezone.utc) if rate_record.window_start.tzinfo is None else rate_record.window_start
+    reset_at = window_start_aware + timedelta(hours=1)
 
     return {
         "enabled": True,

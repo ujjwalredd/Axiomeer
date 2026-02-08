@@ -1,1 +1,28 @@
-{"id":"base64_decode","name":"Base64 Decoder","description":"Decode Base64 to text","category":"utilities","subcategory":"encoding","tags":["base64","decode","decoding","text"],"capabilities":["utilities","decoding","citations"],"freshness":"realtime","citations_supported":true,"product_type":"api","latency_est_ms":50,"cost_est_usd":0.0,"executor_type":"http_api","executor_url":"http://127.0.0.1:8000/providers/utilities/base64_decode"}
+{
+  "id": "base64_decode",
+  "name": "Base64 Decoder",
+  "description": "Decode Base64 to text",
+  "category": "utilities",
+  "subcategory": "encoding",
+  "tags": [
+    "base64",
+    "decode",
+    "decoding",
+    "text"
+  ],
+  "capabilities": [
+    "utilities",
+    "decoding",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 50,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/utilities/base64_decode",
+  "test_inputs": {
+    "encoded": "SGVsbG8gV29ybGQ="
+  }
+}

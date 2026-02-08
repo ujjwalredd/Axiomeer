@@ -1,1 +1,28 @@
-{"id":"numbers_trivia","name":"Numbers Trivia","description":"Interesting facts about numbers from Numbers API","category":"fun","subcategory":"trivia","tags":["numbers","trivia","facts","math"],"capabilities":["entertainment","facts","citations"],"freshness":"static","citations_supported":true,"product_type":"api","latency_est_ms":200,"cost_est_usd":0.0,"executor_type":"http_api","executor_url":"http://127.0.0.1:8000/providers/fun/numbers"}
+{
+  "id": "numbers_trivia",
+  "name": "Numbers Trivia",
+  "description": "Interesting facts about numbers from Numbers API",
+  "category": "fun",
+  "subcategory": "trivia",
+  "tags": [
+    "numbers",
+    "trivia",
+    "facts",
+    "math"
+  ],
+  "capabilities": [
+    "entertainment",
+    "facts",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/fun/numbers",
+  "test_inputs": {
+    "number": "42"
+  }
+}

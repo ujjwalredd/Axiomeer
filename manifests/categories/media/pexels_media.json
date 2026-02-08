@@ -21,5 +21,8 @@
   "latency_est_ms": 700,
   "cost_est_usd": 0.0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/pexels/media"
+  "executor_url": "http://127.0.0.1:8000/providers/pexels/media",
+  "test_inputs": {
+    "query": "mountains"
+  }
 }

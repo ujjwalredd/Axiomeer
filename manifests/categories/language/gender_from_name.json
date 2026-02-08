@@ -1,1 +1,28 @@
-{"id":"gender_from_name","name":"Gender Prediction","description":"Predict gender based on first name","category":"language","subcategory":"prediction","tags":["gender","names","prediction","demographics"],"capabilities":["knowledge","prediction","citations"],"freshness":"static","citations_supported":true,"product_type":"api","latency_est_ms":200,"cost_est_usd":0.0,"executor_type":"http_api","executor_url":"http://127.0.0.1:8000/providers/language/gender_from_name"}
+{
+  "id": "gender_from_name",
+  "name": "Gender Prediction",
+  "description": "Predict gender based on first name",
+  "category": "language",
+  "subcategory": "prediction",
+  "tags": [
+    "gender",
+    "names",
+    "prediction",
+    "demographics"
+  ],
+  "capabilities": [
+    "knowledge",
+    "prediction",
+    "citations"
+  ],
+  "freshness": "static",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 200,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/language/gender_from_name",
+  "test_inputs": {
+    "name": "John"
+  }
+}

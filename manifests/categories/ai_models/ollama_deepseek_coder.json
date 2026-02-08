@@ -21,5 +21,8 @@
   "latency_est_ms": 3500,
   "cost_est_usd": 0.0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/ollama/deepseek_coder"
+  "executor_url": "http://127.0.0.1:8000/providers/ollama/deepseek_coder",
+  "test_inputs": {
+    "prompt": "Write a hello world function"
+  }
 }

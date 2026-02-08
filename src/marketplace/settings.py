@@ -58,10 +58,22 @@ PROVIDER_CACHE_TTL_DICTIONARY: int = int(os.getenv("PROVIDER_CACHE_TTL_DICTIONAR
 
 # Authentication
 AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
-JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_IN_PRODUCTION_USE_RANDOM_SECRET")
+JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 API_KEY_HEADER: str = os.getenv("API_KEY_HEADER", "X-API-Key")
+
+# Security validation: Fail fast if auth enabled but no secure JWT secret
+if AUTH_ENABLED and not JWT_SECRET_KEY:
+    raise RuntimeError(
+        "SECURITY ERROR: AUTH_ENABLED=true but JWT_SECRET_KEY is not set. "
+        "Generate a secure secret with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+if AUTH_ENABLED and len(JWT_SECRET_KEY) < 32:
+    raise RuntimeError(
+        f"SECURITY ERROR: JWT_SECRET_KEY is too short ({len(JWT_SECRET_KEY)} chars). "
+        "Must be at least 32 characters for production security."
+    )
 
 # Rate Limiting
 RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ("true", "1", "yes")

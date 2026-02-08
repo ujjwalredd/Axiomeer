@@ -21,5 +21,9 @@
   "latency_est_ms": 800,
   "cost_est_usd": 0.0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/uk/police_data"
+  "executor_url": "http://127.0.0.1:8000/providers/uk/police_data",
+  "test_inputs": {
+    "lat": "51.5074",
+    "lng": "-0.1278"
+  }
 }

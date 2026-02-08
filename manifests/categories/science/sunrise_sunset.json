@@ -1,1 +1,29 @@
-{"id":"sunrise_sunset","name":"Sunrise Sunset Times","description":"Get sunrise and sunset times for any location","category":"science","subcategory":"astronomy","tags":["sunrise","sunset","sun","astronomy"],"capabilities":["science","astronomy","citations"],"freshness":"realtime","citations_supported":true,"product_type":"api","latency_est_ms":400,"cost_est_usd":0.0,"executor_type":"http_api","executor_url":"http://127.0.0.1:8000/providers/science/sunrise_sunset"}
+{
+  "id": "sunrise_sunset",
+  "name": "Sunrise Sunset Times",
+  "description": "Get sunrise and sunset times for any location",
+  "category": "science",
+  "subcategory": "astronomy",
+  "tags": [
+    "sunrise",
+    "sunset",
+    "sun",
+    "astronomy"
+  ],
+  "capabilities": [
+    "science",
+    "astronomy",
+    "citations"
+  ],
+  "freshness": "realtime",
+  "citations_supported": true,
+  "product_type": "api",
+  "latency_est_ms": 400,
+  "cost_est_usd": 0.0,
+  "executor_type": "http_api",
+  "executor_url": "http://127.0.0.1:8000/providers/science/sunrise_sunset",
+  "test_inputs": {
+    "lat": "36.7201600",
+    "lng": "-4.4203400"
+  }
+}
