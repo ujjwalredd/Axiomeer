@@ -1,4 +1,5 @@
 import os
+import pytest
 
 # Must be set before any marketplace imports
 os.environ["DATABASE_URL"] = "sqlite:///./test_marketplace.db"
@@ -27,8 +28,11 @@ def _mock_sales_no_match(task, constraints, history=None):
     return {"message": "test no match"}
 
 
-def pytest_sessionstart(session):
-    # Avoid Ollama dependency in API tests by mocking sales agent
+@pytest.fixture(scope="session", autouse=True)
+def mock_sales_agent():
+    """Mock sales agent functions to avoid Ollama dependency in tests."""
+    # Import is delayed until first test runs, allowing test files to set env vars first
     import apps.api.main as api_main
     api_main.sales_recommendation = _mock_sales_recommendation
     api_main.sales_no_match = _mock_sales_no_match
+    yield

@@ -113,6 +113,7 @@ async def get_current_user(
     if not AUTH_ENABLED:
         # Backward compatibility: create anonymous user when auth disabled
         # This allows endpoints to work without authentication
+        now = datetime.now(timezone.utc)
         return User(
             id=0,
             email="anonymous@axiomeer.local",
@@ -120,7 +121,9 @@ async def get_current_user(
             password_hash="",
             tier="free",
             is_active=True,
-            is_verified=False
+            is_verified=False,
+            created_at=now,
+            last_login=now
         )
 
     if not user:
