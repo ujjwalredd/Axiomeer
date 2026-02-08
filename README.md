@@ -176,7 +176,7 @@ curl -X POST http://localhost:8000/execute \
 
 ---
 
-## 🏗️ Core Architecture
+## Core Architecture
 
 ### How AI Agents Connect to the Marketplace
 
@@ -380,7 +380,7 @@ response = marketplace.shop(
 # Returns: Sentiment analysis APIs, NLP datasets, review RAGs
 ```
 
-#### ⚡ **Instant Integration**
+#### **Instant Integration**
 ```python
 # Execute discovered products immediately
 result = marketplace.execute(
