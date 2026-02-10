@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0,<77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "axiomeer"
-version = "0.1.1"
+version = "0.1.2"
 description = "Official Python SDK for Axiomeer AI Agent Marketplace"
 readme = "README.md"
 authors = [
@@ -38,10 +38,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://axiomeer.com"
-Documentation = "https://docs.axiomeer.com"
-Repository = "https://github.com/axiomeer/axiomeer-sdk-python"
-"Bug Tracker" = "https://github.com/axiomeer/axiomeer-sdk-python/issues"
+Homepage = "https://github.com/ujjwalredd/Axiomeer"
+Documentation = "https://github.com/ujjwalredd/Axiomeer#readme"
+Repository = "https://github.com/ujjwalredd/Axiomeer"
+"Bug Tracker" = "https://github.com/ujjwalredd/Axiomeer/issues"
 
 [tool.setuptools.packages.find]
 include = ["axiomeer*"]
