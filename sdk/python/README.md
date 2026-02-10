@@ -2,9 +2,9 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/axiomeer.svg)](https://pypi.org/project/axiomeer/)
 [![Python](https://img.shields.io/pypi/pyversions/axiomeer.svg)](https://pypi.org/project/axiomeer/)
-[![License](https://img.shields.io/pypi/l/axiomeer.svg)](https://github.com/axiomeer/axiomeer-sdk-python/blob/main/LICENSE)
+[![License](https://img.shields.io/pypi/l/axiomeer.svg)](https://github.com/ujjwalredd/Axiomeer/blob/main/LICENSE)
 
-Official Python client for the [Axiomeer AI Agent Marketplace](https://axiomeer.com).
+Official Python client for the [Axiomeer AI Agent Marketplace](https://github.com/ujjwalredd/Axiomeer).
 
 Discover and execute tools, APIs, RAG systems, datasets, and more through natural language.
 
@@ -17,8 +17,8 @@ pip install axiomeer
 Or install from source:
 
 ```bash
-git clone https://github.com/axiomeer/axiomeer-sdk-python.git
-cd axiomeer-sdk-python
+git clone https://github.com/ujjwalredd/axiomeer.git
+cd axiomeer/sdk/python/
 pip install -e .
 ```
 
@@ -41,14 +41,15 @@ print(f"Weather: {execution.result}")
 
 ## Authentication
 
-Get your API key from [Axiomeer Dashboard](https://axiomeer.com/dashboard):
+Get your API key from [Axiomeer](https://github.com/ujjwalredd/Axiomeer):
 
 ```python
 # Option 1: Pass directly
 marketplace = AgentMarketplace(api_key="axm_xxx")
 
-# Option 2: Set environment variable
-export AXIOMEER_API_KEY=axm_xxx
+# Option 2: Use environment variable
+import os
+os.environ["AXIOMEER_API_KEY"] = "axm_xxx"
 marketplace = AgentMarketplace()  # Auto-loads from env
 ```
 
@@ -226,9 +227,8 @@ Represents a tool in the marketplace.
 
 ## Support
 
-- Documentation: https://docs.axiomeer.com
-- Issues: https://github.com/axiomeer/axiomeer-sdk-python/issues
-- Email: support@axiomeer.com
+- Documentation: https://github.com/ujjwalredd/Axiomeer#readme
+- Issues: https://github.com/ujjwalredd/Axiomeer/issues
 
 ## License
 
