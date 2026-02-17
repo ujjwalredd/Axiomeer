@@ -4,26 +4,19 @@
   "description": "13,000+ cryptocurrencies with prices and market data",
   "category": "financial",
   "subcategory": "crypto",
-  "tags": [
-    "crypto",
-    "bitcoin",
-    "ethereum",
-    "prices"
-  ],
-  "capabilities": [
-    "finance",
-    "cryptocurrency",
-    "realtime",
-    "citations"
-  ],
+  "tags": ["crypto", "bitcoin", "ethereum", "prices"],
+  "capabilities": ["finance", "cryptocurrency", "realtime", "citations"],
   "freshness": "realtime",
   "citations_supported": true,
   "product_type": "api",
   "latency_est_ms": 600,
-  "cost_est_usd": 0.0,
+  "cost_est_usd": 0,
   "executor_type": "http_api",
   "executor_url": "http://127.0.0.1:8000/providers/coingecko/crypto",
-  "test_inputs": {
-    "coin_id": "bitcoin"
-  }
+  "http_method": "GET",
+  "input_schema": {
+    "parameters": ["coin_id", "vs_currency"],
+    "examples": "\"Bitcoin price\" → {\"coin_id\": \"bitcoin\", \"vs_currency\": \"usd\"}\n\"ETH in EUR\" → {\"coin_id\": \"ethereum\", \"vs_currency\": \"eur\"}"
+  },
+  "test_inputs": {"coin_id": "bitcoin"}
 }

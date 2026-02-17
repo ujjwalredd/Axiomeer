@@ -723,7 +723,7 @@ def datagov_search(
 
 @router.get("/wikipedia")
 def wikipedia_search(
-    q: str = Query(..., description="Search query for Wikipedia article")
+    q: Optional[str] = Query(None, description="Search query for Wikipedia article")
 ) -> Dict[str, Any]:
     """
     Wikipedia article summary search.
@@ -734,6 +734,8 @@ def wikipedia_search(
     Returns:
         Standardized response with Wikipedia article summary
     """
+    if not q or not q.strip():
+        return _error_response("No query provided. Please specify a topic to search.")
     cache_key = _cache_key("wikipedia:search", {"q": q})
     if cached := _cache_get(cache_key):
         return cached

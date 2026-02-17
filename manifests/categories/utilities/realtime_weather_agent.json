@@ -6,7 +6,12 @@
   "freshness": "realtime",
   "citations_supported": true,
   "latency_est_ms": 800,
-  "cost_est_usd": 0.0,
+  "cost_est_usd": 0,
   "executor_type": "http_api",
-  "executor_url": "http://127.0.0.1:8000/providers/openmeteo_weather"
+  "executor_url": "http://127.0.0.1:8000/providers/openmeteo_weather",
+  "http_method": "GET",
+  "input_schema": {
+    "parameters": ["lat", "lon", "timezone_name"],
+    "examples": "\"Weather in Tokyo\" → {\"lat\": 35.6762, \"lon\": 139.6503, \"timezone_name\": \"Asia/Tokyo\"}\n\"NYC weather\" → {\"lat\": 40.7128, \"lon\": -74.0060, \"timezone_name\": \"America/New_York\"}"
+  }
 }

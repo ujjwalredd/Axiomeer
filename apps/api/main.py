@@ -1,12 +1,20 @@
 import json
 import logging
 import requests
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
 from time import perf_counter, time
 
+# Structured logging: timestamp | level | module | message
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -46,6 +54,7 @@ from apps.api.providers import router as providers_router
 
 # Import authentication router and dependencies
 from apps.api.auth_routes import router as auth_router
+from apps.api.routers.v1 import router as v1_router
 from marketplace.auth.dependencies import check_user_rate_limit
 
 @asynccontextmanager
@@ -92,30 +101,26 @@ app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
 app.include_router(providers_router)
 app.include_router(auth_router)
 
-_cache_lock = Lock()
-_cache_store: dict[str, dict] = {}
-
-
 def _cache_key(prefix: str, payload: dict) -> str:
     return f"{prefix}:{json.dumps(payload, sort_keys=True, default=str)}"
 
 
 def _cache_get(key: str):
-    with _cache_lock:
-        entry = _cache_store.get(key)
-        if not entry:
-            return None
-        if entry["expires_at"] <= time():
-            _cache_store.pop(key, None)
-            return None
-        return entry["value"]
+    try:
+        from marketplace.core.cache import cache_get as _get
+        return _get(key)
+    except Exception:
+        return None
 
 
 def _cache_set(key: str, value, ttl_seconds: int):
     if ttl_seconds <= 0:
         return
-    with _cache_lock:
-        _cache_store[key] = {"value": value, "expires_at": time() + ttl_seconds}
+    try:
+        from marketplace.core.cache import cache_set as _set
+        _set(key, value, ttl_seconds)
+    except Exception:
+        pass
 
 
 def get_db():
@@ -270,17 +275,26 @@ def create_app(app_in: AppCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="App with this id already exists")
 
+    meta = dict(app_in.metadata or {})
+    meta["http_method"] = (app_in.http_method or "GET").upper()
+    if app_in.input_schema:
+        meta["input_schema"] = app_in.input_schema
     row = AppListing(
         id=app_in.id,
         name=app_in.name,
         description=app_in.description,
+        category=app_in.category,
+        subcategory=app_in.subcategory,
+        tags=",".join(app_in.tags or []),
         capabilities=",".join(app_in.capabilities),
         freshness=app_in.freshness,
         citations_supported=app_in.citations_supported,
+        product_type=app_in.product_type,
         latency_est_ms=app_in.latency_est_ms,
         cost_est_usd=app_in.cost_est_usd,
         executor_type=app_in.executor_type,
         executor_url=app_in.executor_url,
+        extra_metadata=json.dumps(meta),
     )
     db.add(row)
     db.commit()
@@ -312,13 +326,22 @@ def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db)):
 
     row.name = app_in.name
     row.description = app_in.description
+    row.category = app_in.category
+    row.subcategory = app_in.subcategory
+    row.tags = ",".join(app_in.tags or [])
     row.capabilities = ",".join(app_in.capabilities)
     row.freshness = app_in.freshness
     row.citations_supported = app_in.citations_supported
+    row.product_type = app_in.product_type
     row.latency_est_ms = app_in.latency_est_ms
     row.cost_est_usd = app_in.cost_est_usd
     row.executor_type = app_in.executor_type
     row.executor_url = app_in.executor_url
+    meta = dict(app_in.metadata or {})
+    meta["http_method"] = (app_in.http_method or "GET").upper()
+    if app_in.input_schema:
+        meta["input_schema"] = app_in.input_schema
+    row.extra_metadata = json.dumps(meta)
 
     db.commit()
     db.refresh(row)
@@ -534,7 +557,7 @@ def shop(
 # ---- Execute ----
 
 @app.post("/execute", response_model=ExecuteResponse)
-def execute(
+async def execute(
     req: ExecuteRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(check_user_rate_limit)
@@ -603,7 +626,11 @@ def execute(
         logger.info(f"Attempting LLM parameter extraction for {req.app_id}")
         try:
             from marketplace.core.llm import extract_parameters_from_task
-            extracted = extract_parameters_from_task(req.task, req.app_id, app_row.executor_url)
+            meta = json.loads(app_row.extra_metadata or "{}")
+            input_schema = meta.get("input_schema")
+            extracted = extract_parameters_from_task(
+                req.task, req.app_id, app_row.executor_url, input_schema=input_schema
+            )
             if extracted:
                 logger.info(f"Successfully extracted parameters: {extracted}")
                 final_inputs.update(extracted)
@@ -613,10 +640,17 @@ def execute(
             # If extraction fails, continue with empty inputs and let provider handle it
             logger.warning(f"Parameter extraction failed for {req.app_id}: {e}", exc_info=True)
 
+    meta = json.loads(app_row.extra_metadata or "{}")
+    http_method = meta.get("http_method", "GET")
+
     try:
-        r = requests.get(app_row.executor_url, params=final_inputs, timeout=EXECUTOR_TIMEOUT)
-        r.raise_for_status()
-        payload = r.json()
+        from marketplace.core.executor import execute_http
+        payload = await execute_http(
+            app_row.executor_url,
+            method=http_method,
+            params=final_inputs,
+            timeout=EXECUTOR_TIMEOUT,
+        )
     except Exception as e:
         errors = [f"Execution failed: {e}"]
         run_id = log_run()
@@ -641,6 +675,16 @@ def execute(
     if req.client_id and isinstance(payload, dict):
         _log_message(db, req.client_id, "provider", json.dumps(payload, ensure_ascii=True))
     return ExecuteResponse(app_id=req.app_id, ok=True, output=payload, provenance=prov, validation_errors=[], run_id=run_id)
+
+
+# ---- API v1 versioning: /v1/shop, /v1/execute, /v1/apps ----
+v1_router.post("/shop", response_model=ShopResponse)(shop)
+v1_router.post("/execute", response_model=ExecuteResponse)(execute)
+v1_router.get("/apps", response_model=list[AppOut])(list_apps)
+v1_router.post("/apps", response_model=AppOut)(create_app)
+v1_router.get("/apps/{app_id}", response_model=AppOut)(get_app)
+v1_router.put("/apps/{app_id}", response_model=AppOut)(upsert_app)
+app.include_router(v1_router)
 
 
 # ---- Runs ----
@@ -1258,7 +1302,11 @@ def bootstrap_manifests():
                 row.cost_est_usd = manifest.get("cost_est_usd", 0.0)
                 row.executor_type = manifest.get("executor_type", "http_api")
                 row.executor_url = manifest.get("executor_url", "")
-                row.extra_metadata = json.dumps(manifest.get("metadata", {}))
+                meta = dict(manifest.get("metadata", {}))
+                meta["http_method"] = (manifest.get("http_method") or "GET").upper()
+                if manifest.get("input_schema"):
+                    meta["input_schema"] = manifest["input_schema"]
+                row.extra_metadata = json.dumps(meta)
                 db.commit()
             except Exception as e:
                 print(f"Error loading manifest {manifest_path}: {e}")

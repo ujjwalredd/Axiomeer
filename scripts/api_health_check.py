@@ -70,12 +70,15 @@ def test_api(api_data: Dict[str, Any], base_url: str = "http://localhost:8000") 
         "require_citations": False
     }
 
+    # Ollama models (13B+) can take 60+ seconds on first run
+    timeout_sec = 90 if api_data.get('category') == 'ai_models' else 30
+
     try:
         start_time = time.time()
         response = requests.post(
             f"{base_url}/execute",
             json=test_payload,
-            timeout=30,
+            timeout=timeout_sec,
             headers={"Content-Type": "application/json"}
         )
         elapsed_ms = (time.time() - start_time) * 1000

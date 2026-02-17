@@ -5,15 +5,28 @@ services:
     environment:
       POSTGRES_DB: axiomeer
       POSTGRES_USER: axiomeer
-      POSTGRES_PASSWORD: ${DB_PASSWORD}  # REQUIRED: Set in .env file
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"  # Use 5433 to avoid conflict with local PostgreSQL
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U axiomeer"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: axiomeer_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5
 
   api:
@@ -22,21 +35,31 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://axiomeer:${DB_PASSWORD}@db:5432/axiomeer  # REQUIRED
-      AUTH_ENABLED: ${AUTH_ENABLED:-true}
-      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}  # REQUIRED: Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      DATABASE_URL: postgresql://axiomeer:${DB_PASSWORD}@db:5432/axiomeer
+      REDIS_URL: redis://redis:6379/0
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-false}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-change-in-production}
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
       RATE_LIMIT_FREE_TIER_PER_HOUR: "100"
       RATE_LIMIT_STARTER_TIER_PER_HOUR: "1000"
       RATE_LIMIT_PRO_TIER_PER_HOUR: "10000"
-      SEMANTIC_SEARCH_ENABLED: "true"
+      SEMANTIC_SEARCH_ENABLED: ${SEMANTIC_SEARCH_ENABLED:-true}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434/api/generate}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
 volumes:
   postgres_data:
+  redis_data:

@@ -71,6 +71,12 @@ class AppCreate(BaseModel):
     executor_type: Literal["http_api"] = "http_api"
     executor_url: str = Field(default="", max_length=2000)
 
+    # HTTP method for executor (GET or POST)
+    http_method: Optional[str] = Field(default="GET", max_length=10)
+
+    # Input schema for LLM parameter extraction (parameters list + optional examples)
+    input_schema: Optional[Dict[str, Any]] = Field(default=None)
+
     # Optional metadata
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
