@@ -186,7 +186,6 @@ pip install axiomeer
 ```python
 from axiomeer import AgentMarketplace
 
-# Initialize
 client = AgentMarketplace(api_key="axm_xxxxx")
 
 # Find the right API using natural language
@@ -195,6 +194,26 @@ result = client.shop("translate text to Spanish")
 # Execute it
 execution = result.execute(client, text="Hello world", target="es")
 print(execution.result)
+```
+
+#### JavaScript / TypeScript SDK
+
+```bash
+npm install @axiomeer/sdk
+```
+
+```typescript
+import { AgentMarketplace } from '@axiomeer/sdk';
+
+const marketplace = new AgentMarketplace({ apiKey: 'axm_xxxxx' });
+
+// Shop and execute in one call
+const execution = await marketplace.shopAndExecute(
+  'I need weather data',
+  { location: 'Tokyo' }
+);
+
+console.log(execution.result);
 ```
 
 ---
@@ -300,14 +319,22 @@ Manifests support optional `http_method` and `input_schema` for smarter executio
 ## Run Tests
 
 ```bash
-# All tests
+# All tests (Python >=3.10 with dependencies installed)
 pytest tests/ -v
 
 # Validate manifests (91 API definitions)
 python scripts/validate_manifests.py
 
-# Health check all 91 APIs
+# Health check all 91 APIs (requires outbound network access)
 python scripts/api_health_check.py
+
+# Alternatively, run everything inside Docker (recommended)
+docker-compose run --rm api pytest tests/ -v
+docker-compose run --rm api python scripts/validate_manifests.py
+docker-compose run --rm api python scripts/api_health_check.py
+
+# Basic metrics / observability (when the API server is running)
+curl http://localhost:8000/metrics | jq
 ```
 
 ---
