@@ -5,6 +5,7 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from time import perf_counter, time
 
 # Structured logging: timestamp | level | module | message
@@ -17,7 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from marketplace.core.models import (
@@ -56,6 +57,31 @@ from apps.api.providers import router as providers_router
 from apps.api.auth_routes import router as auth_router
 from apps.api.routers.v1 import router as v1_router
 from marketplace.auth.dependencies import check_user_rate_limit
+
+_metrics_lock = Lock()
+_metrics: dict[str, dict[str, int]] = {}
+
+
+def _record_metric(path: str, latency_ms: int, is_error: bool) -> None:
+    """In-memory request metrics for local debugging and observability."""
+    with _metrics_lock:
+        stats = _metrics.setdefault(
+            path,
+            {
+                "count": 0,
+                "error_count": 0,
+                "total_latency_ms": 0,
+                "max_latency_ms": 0,
+            },
+        )
+        latency_ms_int = max(0, int(latency_ms))
+        stats["count"] += 1
+        stats["total_latency_ms"] += latency_ms_int
+        if latency_ms_int > stats["max_latency_ms"]:
+            stats["max_latency_ms"] = latency_ms_int
+        if is_error:
+            stats["error_count"] += 1
+
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
@@ -96,6 +122,24 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Collect basic per-endpoint request metrics (count, errors, latency)."""
+    start = perf_counter()
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception:
+        latency_ms = int((perf_counter() - start) * 1000)
+        _record_metric(request.url.path, latency_ms, True)
+        raise
+    else:
+        latency_ms = int((perf_counter() - start) * 1000)
+        _record_metric(request.url.path, latency_ms, status_code >= 500)
+        return response
+
 
 # Include provider endpoints
 app.include_router(providers_router)
@@ -246,6 +290,25 @@ def _log_message(db: Session, client_id: str, role: str, content: str):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+def metrics():
+    """Lightweight in-memory metrics for local debugging."""
+    with _metrics_lock:
+        out: dict[str, dict[str, int | None]] = {}
+        for path, stats in _metrics.items():
+            count = stats["count"]
+            avg_ms: int | None = None
+            if count > 0:
+                avg_ms = int(stats["total_latency_ms"] / count)
+            out[path] = {
+                "count": count,
+                "error_count": stats["error_count"],
+                "avg_latency_ms": avg_ms,
+                "max_latency_ms": stats["max_latency_ms"],
+            }
+    return out
 
 
 @app.get("/semantic-search/stats")
