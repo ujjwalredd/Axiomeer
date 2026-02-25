@@ -1,0 +1,45 @@
+{
+  "name": "@axiomeer/sdk",
+  "version": "0.1.0",
+  "description": "Official JavaScript/TypeScript SDK for Axiomeer AI Agent Marketplace",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "marketplace",
+    "llm",
+    "tools",
+    "api",
+    "axiomeer"
+  ],
+  "author": "Axiomeer Team <support@axiomeer.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/axiomeer/axiomeer-sdk-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/axiomeer/axiomeer-sdk-js/issues"
+  },
+  "homepage": "https://axiomeer.com",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
