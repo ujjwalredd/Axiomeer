@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(node_modules/.bin/vite build:*)"
+    ]
+  }
+}

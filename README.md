@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
 [![PyPI](https://img.shields.io/pypi/v/axiomeer.svg)](https://pypi.org/project/axiomeer/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 One API to access 91+ services. Search with natural language. Execute with 3 lines of code.
 
@@ -64,13 +64,13 @@ result = client.shop("get weather in Tokyo")
 │   └─────────────────┘    └─────────────────┘                 │
 │                                                              │
 │   ┌─────────────────────────────────────────┐                │
-│   │         Weighted Ranking                 │               │
-│   │  capability(70%) + relevance(25%)        │               │
-│   │  + trust(15%) - latency(20%) - cost(10%) │               │
+│   │         Weighted Ranking                │                │
+│   │  capability(70%) + relevance(25%)       │                │
+│   │  + trust(15%) - latency(20%) - cost(10%)│                │
 │   └─────────────────────────────────────────┘                │
 │                                                              │
 │   ┌─────────────────────────────────────────┐                │
-│   │     91 APIs across 14 categories         │               │
+│   │     91 APIs across 14 categories        │                │
 │   └─────────────────────────────────────────┘                │
 └─────────────────────────┬────────────────────────────────────┘
                           │
@@ -375,11 +375,9 @@ except RateLimitError as e:
     print(f"Retry after {e.retry_after}s")
 ```
 
----
-
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE) for details.
 
 ---
 
