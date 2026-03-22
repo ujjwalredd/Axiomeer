@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import requests
 import sys
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from marketplace.core.models import (
@@ -123,6 +125,17 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
 
+# CORS — restrict to configured origins in production
+_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()] or ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+)
+
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
@@ -196,7 +209,7 @@ def _row_to_app_out(r: AppListing) -> AppOut:
     """Convert an ORM AppListing row to an AppOut response."""
     try:
         metadata = json.loads(r.extra_metadata) if r.extra_metadata else {}
-    except:
+    except Exception:
         metadata = {}
 
     return AppOut(
@@ -293,8 +306,8 @@ def health():
 
 
 @app.get("/metrics")
-def metrics():
-    """Lightweight in-memory metrics for local debugging."""
+def metrics(current_user: User = Depends(check_user_rate_limit)):
+    """Lightweight in-memory metrics. Requires authentication when AUTH_ENABLED=true."""
     with _metrics_lock:
         out: dict[str, dict[str, int | None]] = {}
         for path, stats in _metrics.items():
@@ -333,7 +346,7 @@ def list_apps(db: Session = Depends(get_db)):
 
 
 @app.post("/apps", response_model=AppOut)
-def create_app(app_in: AppCreate, db: Session = Depends(get_db)):
+def create_app(app_in: AppCreate, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     existing = db.get(AppListing, app_in.id)
     if existing:
         raise HTTPException(status_code=409, detail="App with this id already exists")
@@ -378,7 +391,7 @@ def get_app(app_id: str, db: Session = Depends(get_db)):
 
 
 @app.put("/apps/{app_id}", response_model=AppOut)
-def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db)):
+def upsert_app(app_id: str, app_in: AppCreate, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     if app_id != app_in.id:
         raise HTTPException(status_code=400, detail="Path app_id must match body id")
 
@@ -753,7 +766,7 @@ app.include_router(v1_router)
 # ---- Runs ----
 
 @app.get("/runs", response_model=list[RunOut])
-def list_runs(db: Session = Depends(get_db)):
+def list_runs(db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     rows = db.query(Run).order_by(Run.id.desc()).limit(50).all()
     return [
         RunOut(
@@ -842,7 +855,7 @@ def app_trust(app_id: str, db: Session = Depends(get_db)):
 # ---- Conversation Memory ----
 
 @app.post("/messages", response_model=MessageOut)
-def create_message(msg: MessageIn, db: Session = Depends(get_db)):
+def create_message(msg: MessageIn, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     now = datetime.now(timezone.utc).isoformat()
     row = ConversationMessage(
         client_id=msg.client_id,
@@ -863,7 +876,7 @@ def create_message(msg: MessageIn, db: Session = Depends(get_db)):
 
 
 @app.get("/history", response_model=list[MessageOut])
-def get_history(client_id: str, limit: int = MEMORY_MAX_MESSAGES, db: Session = Depends(get_db)):
+def get_history(client_id: str, limit: int = MEMORY_MAX_MESSAGES, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     rows = (
         db.query(ConversationMessage)
         .filter(ConversationMessage.client_id == client_id)
@@ -1336,6 +1349,20 @@ def bootstrap_manifests():
     """Auto-register all manifests (idempotent upsert)."""
     if not MANIFESTS_DIR.exists():
         return
+
+    from marketplace.settings import API_BASE_URL
+    # Normalise base URL: strip trailing slash
+    _api_base = API_BASE_URL.rstrip("/")
+
+    def _rewrite_executor_url(url: str) -> str:
+        """Replace hardcoded localhost/127.0.0.1 origins with the configured API_BASE_URL."""
+        if not url:
+            return url
+        for placeholder in ("http://127.0.0.1:8000", "http://localhost:8000"):
+            if url.startswith(placeholder):
+                return _api_base + url[len(placeholder):]
+        return url
+
     db = SessionLocal()
     try:
         # Load from both old location (manifests/*.json) and new categories (manifests/categories/*/*.json)
@@ -1364,7 +1391,7 @@ def bootstrap_manifests():
                 row.latency_est_ms = manifest.get("latency_est_ms", 500)
                 row.cost_est_usd = manifest.get("cost_est_usd", 0.0)
                 row.executor_type = manifest.get("executor_type", "http_api")
-                row.executor_url = manifest.get("executor_url", "")
+                row.executor_url = _rewrite_executor_url(manifest.get("executor_url", ""))
                 meta = dict(manifest.get("metadata", {}))
                 meta["http_method"] = (manifest.get("http_method") or "GET").upper()
                 if manifest.get("input_schema"):
@@ -1372,7 +1399,7 @@ def bootstrap_manifests():
                 row.extra_metadata = json.dumps(meta)
                 db.commit()
             except Exception as e:
-                print(f"Error loading manifest {manifest_path}: {e}")
+                logger.error(f"Error loading manifest {manifest_path}: {e}")
                 continue
     finally:
         db.close()
