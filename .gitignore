@@ -25,3 +25,6 @@ venv/
 # Environment
 .env
 backups/
+
+# Claude Code
+.claude/
