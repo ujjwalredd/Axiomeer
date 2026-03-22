@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy application code
 COPY . /app/
 
-# Install package with redis support for caching
+# Install package with redis support for caching and dev tools for testing
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e ".[redis]"
+    && pip install --no-cache-dir -e ".[redis,dev]"
 
 # Expose port
 EXPOSE 8000

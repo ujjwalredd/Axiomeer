@@ -8,55 +8,126 @@ export interface AxiomeerConfig {
   timeout?: number;
 }
 
+// Matches AppOut from the API
 export interface AppListing {
-  app_id: string;
+  id: string;
   name: string;
   description: string;
-  provider: string;
+  category: string;
+  subcategory?: string;
+  tags: string[];
   capabilities: string[];
-  trust_card?: Record<string, any>;
-  category?: string;
-  uptime?: number;
+  freshness: 'static' | 'daily' | 'realtime';
+  citations_supported: boolean;
+  product_type: string;
+  latency_est_ms: number;
+  cost_est_usd: number;
+  executor_type: string;
+  executor_url: string;
+  metadata: Record<string, any>;
+}
+
+export interface Constraints {
+  citations_required?: boolean;
+  freshness?: 'static' | 'daily' | 'realtime';
+  max_latency_ms?: number;
+  max_cost_usd?: number;
 }
 
 export interface ShopRequest {
   task: string;
   required_capabilities?: string[];
-  excluded_providers?: string[];
-  max_cost_usd?: number;
+  constraints?: Constraints;
+  client_id?: string;
 }
 
-export interface ShopResult {
-  selected_app: AppListing;
-  reasoning: string;
-  confidence: number;
-  alternatives: AppListing[];
+// Matches Recommendation from the API
+export interface Recommendation {
+  app_id: string;
+  name: string;
+  score: number;
+  why: string[];
+  rationale?: string;
+  tradeoff?: string;
+  trust_score?: number;
+}
+
+// Matches ShopResponse from the API
+export interface ShopResponse {
+  status: 'OK' | 'NO_MATCH';
+  recommendations: Recommendation[];
+  explanation: string[];
+  sales_agent?: {
+    summary: string;
+    final_choice: string;
+    recommendations: Array<{ app_id: string; rationale: string; tradeoff: string }>;
+  };
+  metrics: Record<string, any>;
 }
 
 export interface ExecuteRequest {
   app_id: string;
-  params?: Record<string, any>;
+  task: string;
+  inputs?: Record<string, any>;
+  fallback_app_ids?: string[];
+  require_citations?: boolean;
+  client_id?: string;
 }
 
-export interface ExecutionResult {
-  success: boolean;
-  result: any;
+export interface Provenance {
+  sources: string[];
+  retrieved_at: string;
+  notes: string[];
+}
+
+// Matches ExecuteResponse from the API
+export interface ExecuteResponse {
   app_id: string;
-  execution_time_ms?: number;
-  cost_usd?: number;
+  ok: boolean;
+  output?: Record<string, any>;
+  provenance?: Provenance;
+  validation_errors: string[];
+  run_id?: number;
+}
+
+export interface WorkflowStep {
+  app_id: string;
+  task: string;
+  inputs?: Record<string, any>;
+  output_key?: string;
+}
+
+export interface WorkflowRequest {
+  steps: WorkflowStep[];
+  client_id?: string;
+}
+
+export interface WorkflowStepResult {
+  step: number;
+  app_id: string;
+  ok: boolean;
+  output?: Record<string, any>;
   error?: string;
+}
+
+export interface WorkflowResponse {
+  ok: boolean;
+  steps: WorkflowStepResult[];
+  final_output?: Record<string, any>;
+}
+
+export interface CapabilitiesResponse {
+  capabilities: string[];
+  count: number;
 }
 
 export interface ListAppsParams {
   category?: string;
-  search?: string;
   limit?: number;
 }
 
 export interface HealthResponse {
   status: string;
-  version?: string;
-  timestamp?: string;
   [key: string]: any;
 }
 

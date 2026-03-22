@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ from marketplace.core.models import (
     ShopRequest, ShopResponse, SalesAgentMessage, SalesAgentRecommendation,
     AppCreate, AppOut,
     ExecuteRequest, ExecuteResponse, Provenance,
+    WorkflowRequest, WorkflowResponse, WorkflowStepResult,
     RunOut, RunDetailOut, TrustOut,
     MessageIn, MessageOut,
 )
@@ -120,7 +122,44 @@ async def lifespan(application: FastAPI):
         finally:
             db.close()
 
+    # Background task: periodically ping internal provider endpoints to refresh latency estimates
+    async def _health_monitor():
+        import httpx as _httpx
+        from marketplace.settings import API_BASE_URL
+        while True:
+            await asyncio.sleep(300)  # every 5 minutes
+            try:
+                db = SessionLocal()
+                try:
+                    rows = db.query(AppListing).filter(
+                        AppListing.executor_url.like(f"{API_BASE_URL}%")
+                    ).all()
+                    async with _httpx.AsyncClient(timeout=5) as client:
+                        for r in rows:
+                            t_start = perf_counter()
+                            try:
+                                await client.get(r.executor_url)
+                                r.latency_est_ms = int((perf_counter() - t_start) * 1000)
+                            except Exception:
+                                pass
+                    db.commit()
+                    # Invalidate trust score cache so next /shop picks up fresh latency
+                    _cache_set(_TRUST_CACHE_KEY, {}, 1)
+                    logger.info("Health monitor: updated latency estimates for internal providers")
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.warning(f"Health monitor error: {e}")
+
+    _health_task = asyncio.create_task(_health_monitor())
+
     yield
+
+    _health_task.cancel()
+    try:
+        await _health_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Axiomeer", version="0.2.0", lifespan=lifespan)
@@ -238,6 +277,14 @@ def _p95(values: list[int]) -> int | None:
     return values[idx]
 
 def _trust_scores_by_app(db: Session) -> dict[str, TrustOut]:
+    # Serve from cache to avoid full Run table scan on every /shop request
+    cached = _cache_get(_TRUST_CACHE_KEY)
+    if cached and isinstance(cached, dict):
+        try:
+            return {k: TrustOut(**v) for k, v in cached.items()}
+        except Exception:
+            pass  # Stale/corrupt cache — recompute
+
     rows = db.query(Run).all()
     by_app: dict[str, list[Run]] = {}
     for r in rows:
@@ -270,6 +317,9 @@ def _trust_scores_by_app(db: Session) -> dict[str, TrustOut]:
             trust_score=round(trust_score, 4) if not insufficient else 0.5,
             insufficient_data=insufficient,
         )
+
+    from marketplace.settings import TRUST_CACHE_TTL
+    _cache_set(_TRUST_CACHE_KEY, {k: v.model_dump() for k, v in results.items()}, TRUST_CACHE_TTL)
     return results
 
 def _history_for_client(db: Session, client_id: str, limit: int) -> list[dict]:
@@ -296,6 +346,19 @@ def _log_message(db: Session, client_id: str, role: str, content: str):
     )
     db.add(msg)
     db.commit()
+
+
+def _scoped_client_id(client_id: str | None, user: "User") -> str | None:
+    """Scope client_id to authenticated user to prevent cross-user history leakage."""
+    if not client_id:
+        return None
+    from marketplace.settings import AUTH_ENABLED
+    if AUTH_ENABLED and user.id > 0:
+        return f"u{user.id}:{client_id}"
+    return client_id
+
+
+_TRUST_CACHE_KEY = "axiomeer:trust_scores_all"
 
 
 # ---- Health ----
@@ -459,8 +522,9 @@ def shop(
         return ShopResponse(**cached)
 
     history = []
-    if req.client_id:
-        history = _history_for_client(db, req.client_id, MEMORY_MAX_MESSAGES)
+    scoped_client_id = _scoped_client_id(req.client_id, current_user)
+    if scoped_client_id:
+        history = _history_for_client(db, scoped_client_id, MEMORY_MAX_MESSAGES)
 
     trust_scores = _trust_scores_by_app(db)
     rows = db.query(AppListing).all()
@@ -487,9 +551,9 @@ def shop(
         message = "No suitable products matched strict routing thresholds."
         if router_expl:
             message = router_expl[0]
-        if req.client_id:
-            _log_message(db, req.client_id, "client", req.task)
-            _log_message(db, req.client_id, "sales_agent", message)
+        if scoped_client_id:
+            _log_message(db, scoped_client_id, "client", req.task)
+            _log_message(db, scoped_client_id, "sales_agent", message)
         res = ShopResponse(
             status="NO_MATCH",
             recommendations=[],
@@ -532,9 +596,9 @@ def shop(
         )
     except SalesAgentError as e:
         summary = f"Sales agent failed: {e}. Returning NO_MATCH to avoid unsafe selection."
-        if req.client_id:
-            _log_message(db, req.client_id, "client", req.task)
-            _log_message(db, req.client_id, "sales_agent", summary)
+        if scoped_client_id:
+            _log_message(db, scoped_client_id, "client", req.task)
+            _log_message(db, scoped_client_id, "sales_agent", summary)
         res = ShopResponse(
             status="NO_MATCH",
             recommendations=[],
@@ -550,9 +614,9 @@ def shop(
         return res
 
     if sales["final_choice"] == "NO_MATCH":
-        if req.client_id:
-            _log_message(db, req.client_id, "client", req.task)
-            _log_message(db, req.client_id, "sales_agent", sales["summary"])
+        if scoped_client_id:
+            _log_message(db, scoped_client_id, "client", req.task)
+            _log_message(db, scoped_client_id, "sales_agent", sales["summary"])
         res = ShopResponse(
             status="NO_MATCH",
             recommendations=[],
@@ -602,9 +666,9 @@ def shop(
         key=lambda r: (0, sales_order[r.app_id]) if r.app_id in sales_order else (1, 0),
     )
 
-    if req.client_id:
-        _log_message(db, req.client_id, "client", req.task)
-        _log_message(db, req.client_id, "sales_agent", f"Final choice: {chosen_id}. {sales['summary']}")
+    if scoped_client_id:
+        _log_message(db, scoped_client_id, "client", req.task)
+        _log_message(db, scoped_client_id, "sales_agent", f"Final choice: {chosen_id}. {sales['summary']}")
 
     sales_agent_msg = SalesAgentMessage(
         summary=sales["summary"],
@@ -638,31 +702,22 @@ async def execute(
     db: Session = Depends(get_db),
     current_user: User = Depends(check_user_rate_limit)
 ) -> ExecuteResponse:
-    # Log usage for authenticated users
-    if current_user.id > 0:
-        usage = UsageRecord(
-            user_id=current_user.id,
-            endpoint="/execute",
-            method="POST",
-            cost_usd=0.0  # Can be updated based on actual cost later
-        )
-        db.add(usage)
-        db.commit()
     t0 = perf_counter()
     now = datetime.now(timezone.utc).isoformat()
+    scoped_client_id = _scoped_client_id(req.client_id, current_user)
 
-    payload = None
-    errors: list[str] = []
-    ok = False
+    # Try primary app, then fallbacks in order
+    app_ids_to_try = [req.app_id] + list(req.fallback_app_ids or [])
+    last_errors: list[str] = []
     require_citations = True
 
-    def log_run():
+    def _log_run(app_id: str, ok: bool, payload, errors: list, req_cit: bool) -> int:
         latency_ms = int((perf_counter() - t0) * 1000)
         run = Run(
-            app_id=req.app_id,
+            app_id=app_id,
             task=req.task,
-            client_id=req.client_id,
-            require_citations=require_citations,
+            client_id=scoped_client_id,
+            require_citations=req_cit,
             ok=ok,
             output_json=json.dumps(payload) if payload is not None else None,
             validation_errors_json=json.dumps(errors),
@@ -674,83 +729,103 @@ async def execute(
         db.refresh(run)
         return run.id
 
-    app_row = db.get(AppListing, req.app_id)
-    if not app_row:
-        errors = ["Unknown app_id"]
-        run_id = log_run()
-        return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
+    for attempt_app_id in app_ids_to_try:
+        app_row = db.get(AppListing, attempt_app_id)
+        if not app_row:
+            last_errors = [f"Unknown app_id: {attempt_app_id}"]
+            continue
 
-    # Only require citations if explicitly requested by the client AND the API supports them
-    require_citations = bool(req.require_citations and app_row.citations_supported)
+        require_citations = bool(req.require_citations and app_row.citations_supported)
 
-    if app_row.executor_type != "http_api":
-        errors = ["Unsupported executor_type"]
-        run_id = log_run()
-        return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
+        if app_row.executor_type != "http_api":
+            last_errors = ["Unsupported executor_type"]
+            continue
 
-    if not app_row.executor_url:
-        errors = ["Missing executor_url"]
-        run_id = log_run()
-        return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
+        if not app_row.executor_url:
+            last_errors = ["Missing executor_url"]
+            continue
 
-    # Extract parameters from task using LLM if inputs are empty
-    final_inputs = req.inputs.copy() if req.inputs else {}
+        final_inputs = req.inputs.copy() if req.inputs else {}
+        logger.info(f"Execute {attempt_app_id}: inputs={final_inputs}, task='{req.task}'")
 
-    logger.info(f"Execute {req.app_id}: inputs={final_inputs}, task='{req.task}'")
+        if not final_inputs and req.task:
+            logger.info(f"Attempting LLM parameter extraction for {attempt_app_id}")
+            try:
+                from marketplace.core.llm import extract_parameters_from_task
+                meta = json.loads(app_row.extra_metadata or "{}")
+                input_schema = meta.get("input_schema")
+                extracted = extract_parameters_from_task(
+                    req.task, attempt_app_id, app_row.executor_url, input_schema=input_schema
+                )
+                if extracted:
+                    logger.info(f"Successfully extracted parameters: {extracted}")
+                    final_inputs.update(extracted)
+                else:
+                    logger.info("No parameters extracted from task")
+            except Exception as e:
+                logger.warning(f"Parameter extraction failed for {attempt_app_id}: {e}", exc_info=True)
 
-    if not final_inputs and req.task:
-        logger.info(f"Attempting LLM parameter extraction for {req.app_id}")
+        meta = json.loads(app_row.extra_metadata or "{}")
+        http_method = meta.get("http_method", "GET")
+
         try:
-            from marketplace.core.llm import extract_parameters_from_task
-            meta = json.loads(app_row.extra_metadata or "{}")
-            input_schema = meta.get("input_schema")
-            extracted = extract_parameters_from_task(
-                req.task, req.app_id, app_row.executor_url, input_schema=input_schema
+            from marketplace.core.executor import execute_http
+            payload = await execute_http(
+                app_row.executor_url,
+                method=http_method,
+                params=final_inputs,
+                timeout=EXECUTOR_TIMEOUT,
             )
-            if extracted:
-                logger.info(f"Successfully extracted parameters: {extracted}")
-                final_inputs.update(extracted)
-            else:
-                logger.info(f"No parameters extracted from task")
         except Exception as e:
-            # If extraction fails, continue with empty inputs and let provider handle it
-            logger.warning(f"Parameter extraction failed for {req.app_id}: {e}", exc_info=True)
+            last_errors = [f"Execution failed: {e}"]
+            logger.warning(f"Provider {attempt_app_id} failed: {e}; trying next fallback")
+            continue
 
-    meta = json.loads(app_row.extra_metadata or "{}")
-    http_method = meta.get("http_method", "GET")
+        val_errors = validate_output(payload, require_citations=require_citations)
+        if val_errors:
+            run_id = _log_run(attempt_app_id, False, payload, val_errors, require_citations)
+            return ExecuteResponse(
+                app_id=attempt_app_id, ok=False, output=payload,
+                provenance=None, validation_errors=val_errors, run_id=run_id,
+            )
 
-    try:
-        from marketplace.core.executor import execute_http
-        payload = await execute_http(
-            app_row.executor_url,
-            method=http_method,
-            params=final_inputs,
-            timeout=EXECUTOR_TIMEOUT,
+        prov = Provenance(
+            sources=payload.get("citations", []) if isinstance(payload, dict) else [],
+            retrieved_at=payload.get("retrieved_at", "") if isinstance(payload, dict) else "",
+            notes=[],
         )
-    except Exception as e:
-        errors = [f"Execution failed: {e}"]
-        run_id = log_run()
-        return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=errors, run_id=run_id)
+        run_id = _log_run(attempt_app_id, True, payload, [], require_citations)
 
-    errors = validate_output(payload, require_citations=require_citations)
-    if errors:
-        run_id = log_run()
+        # Log usage with actual cost from app manifest
+        if current_user.id > 0:
+            usage = UsageRecord(
+                user_id=current_user.id,
+                endpoint="/execute",
+                method="POST",
+                cost_usd=app_row.cost_est_usd,
+            )
+            db.add(usage)
+            db.commit()
+
+        if scoped_client_id and isinstance(payload, dict):
+            _log_message(db, scoped_client_id, "provider", json.dumps(payload, ensure_ascii=True))
         return ExecuteResponse(
-            app_id=req.app_id, ok=False, output=payload,
-            provenance=None, validation_errors=errors, run_id=run_id,
+            app_id=attempt_app_id, ok=True, output=payload,
+            provenance=prov, validation_errors=[], run_id=run_id,
         )
 
-    prov = Provenance(
-        sources=payload.get("citations", []) if isinstance(payload, dict) else [],
-        retrieved_at=payload.get("retrieved_at", ""),
-        notes=[],
-    )
-
-    ok = True
-    run_id = log_run()
-    if req.client_id and isinstance(payload, dict):
-        _log_message(db, req.client_id, "provider", json.dumps(payload, ensure_ascii=True))
-    return ExecuteResponse(app_id=req.app_id, ok=True, output=payload, provenance=prov, validation_errors=[], run_id=run_id)
+    # All attempts failed
+    run_id = _log_run(req.app_id, False, None, last_errors, require_citations)
+    if current_user.id > 0:
+        usage = UsageRecord(
+            user_id=current_user.id,
+            endpoint="/execute",
+            method="POST",
+            cost_usd=0.0,
+        )
+        db.add(usage)
+        db.commit()
+    return ExecuteResponse(app_id=req.app_id, ok=False, validation_errors=last_errors, run_id=run_id)
 
 
 # ---- API v1 versioning: /v1/shop, /v1/execute, /v1/apps ----
@@ -857,8 +932,9 @@ def app_trust(app_id: str, db: Session = Depends(get_db)):
 @app.post("/messages", response_model=MessageOut)
 def create_message(msg: MessageIn, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
     now = datetime.now(timezone.utc).isoformat()
+    scoped = _scoped_client_id(msg.client_id, current_user) or msg.client_id
     row = ConversationMessage(
-        client_id=msg.client_id,
+        client_id=scoped,
         role=msg.role,
         content=msg.content,
         created_at=now,
@@ -877,9 +953,10 @@ def create_message(msg: MessageIn, db: Session = Depends(get_db), current_user: 
 
 @app.get("/history", response_model=list[MessageOut])
 def get_history(client_id: str, limit: int = MEMORY_MAX_MESSAGES, db: Session = Depends(get_db), current_user: User = Depends(check_user_rate_limit)):
+    scoped = _scoped_client_id(client_id, current_user) or client_id
     rows = (
         db.query(ConversationMessage)
-        .filter(ConversationMessage.client_id == client_id)
+        .filter(ConversationMessage.client_id == scoped)
         .order_by(ConversationMessage.id.desc())
         .limit(limit)
         .all()
@@ -895,6 +972,160 @@ def get_history(client_id: str, limit: int = MEMORY_MAX_MESSAGES, db: Session = 
         )
         for r in rows
     ]
+
+
+# ---- Capabilities ----
+
+@app.get("/capabilities")
+def list_capabilities(db: Session = Depends(get_db)):
+    """Return all unique capabilities across all registered apps."""
+    rows = db.query(AppListing).all()
+    caps: set[str] = set()
+    for r in rows:
+        for c in r.capabilities.split(","):
+            c = c.strip()
+            if c:
+                caps.add(c)
+    return {"capabilities": sorted(caps), "count": len(caps)}
+
+
+# ---- Execute Stream (SSE) ----
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+
+
+@app.post("/execute/stream")
+async def execute_stream(
+    req: ExecuteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_user_rate_limit),
+):
+    """Execute an app with SSE streaming progress events: started, extracting_params, executing, result, error."""
+    async def event_stream():
+        def sse(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+        yield sse("started", {"app_id": req.app_id, "task": req.task})
+
+        app_row = db.get(AppListing, req.app_id)
+        if not app_row:
+            yield sse("error", {"error": f"Unknown app_id: {req.app_id}"})
+            return
+
+        final_inputs = req.inputs.copy() if req.inputs else {}
+
+        if not final_inputs and req.task:
+            yield sse("extracting_params", {"app_id": req.app_id})
+            try:
+                from marketplace.core.llm import extract_parameters_from_task
+                meta = json.loads(app_row.extra_metadata or "{}")
+                extracted = extract_parameters_from_task(
+                    req.task, req.app_id, app_row.executor_url,
+                    input_schema=meta.get("input_schema"),
+                )
+                if extracted:
+                    final_inputs.update(extracted)
+                    yield sse("params_extracted", {"params": extracted})
+            except Exception as e:
+                yield sse("warning", {"message": f"Parameter extraction failed: {e}"})
+
+        yield sse("executing", {"app_id": req.app_id, "inputs": final_inputs})
+
+        try:
+            from marketplace.core.executor import execute_http
+            meta = json.loads(app_row.extra_metadata or "{}")
+            payload = await execute_http(
+                app_row.executor_url,
+                method=meta.get("http_method", "GET"),
+                params=final_inputs,
+                timeout=EXECUTOR_TIMEOUT,
+            )
+            yield sse("result", {"app_id": req.app_id, "ok": True, "output": payload})
+        except Exception as e:
+            yield sse("error", {"app_id": req.app_id, "error": str(e)})
+
+    return _StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---- Execute Workflow ----
+
+@app.post("/execute/workflow", response_model=WorkflowResponse)
+async def execute_workflow(
+    req: WorkflowRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_user_rate_limit),
+) -> WorkflowResponse:
+    """
+    Execute a multi-step workflow. Each step can reference prior step outputs
+    via {step_key.field} placeholders in its inputs dict values.
+    """
+
+    def _resolve_inputs(inputs: dict, step_outputs: dict) -> dict:
+        """Replace {key.field} placeholders with actual values from prior step outputs."""
+        resolved = {}
+        for k, v in inputs.items():
+            if isinstance(v, str) and v.startswith("{") and v.endswith("}"):
+                ref = v[1:-1]
+                parts = ref.split(".", 1)
+                step_key = parts[0]
+                field = parts[1] if len(parts) > 1 else None
+                src = step_outputs.get(step_key, {})
+                resolved[k] = src.get(field, v) if field else src
+            else:
+                resolved[k] = v
+        return resolved
+
+    step_outputs: dict = {}
+    results: list[WorkflowStepResult] = []
+
+    for i, step in enumerate(req.steps):
+        step_key = step.output_key or f"step_{i}"
+        final_inputs = _resolve_inputs(step.inputs, step_outputs)
+
+        app_row = db.get(AppListing, step.app_id)
+        if not app_row:
+            results.append(WorkflowStepResult(step=i, app_id=step.app_id, ok=False, error=f"Unknown app_id: {step.app_id}"))
+            return WorkflowResponse(ok=False, steps=results)
+
+        if not app_row.executor_url:
+            results.append(WorkflowStepResult(step=i, app_id=step.app_id, ok=False, error="Missing executor_url"))
+            return WorkflowResponse(ok=False, steps=results)
+
+        if not final_inputs and step.task:
+            try:
+                from marketplace.core.llm import extract_parameters_from_task
+                meta = json.loads(app_row.extra_metadata or "{}")
+                extracted = extract_parameters_from_task(
+                    step.task, step.app_id, app_row.executor_url,
+                    input_schema=meta.get("input_schema"),
+                )
+                if extracted:
+                    final_inputs.update(extracted)
+            except Exception:
+                pass
+
+        try:
+            from marketplace.core.executor import execute_http
+            meta = json.loads(app_row.extra_metadata or "{}")
+            payload = await execute_http(
+                app_row.executor_url,
+                method=meta.get("http_method", "GET"),
+                params=final_inputs,
+                timeout=EXECUTOR_TIMEOUT,
+            )
+            out = payload if isinstance(payload, dict) else {"result": payload}
+            step_outputs[step_key] = out
+            results.append(WorkflowStepResult(step=i, app_id=step.app_id, ok=True, output=out))
+        except Exception as e:
+            results.append(WorkflowStepResult(step=i, app_id=step.app_id, ok=False, error=str(e)))
+            return WorkflowResponse(ok=False, steps=results)
+
+    last_key = req.steps[-1].output_key or f"step_{len(req.steps) - 1}"
+    return WorkflowResponse(ok=True, steps=results, final_output=step_outputs.get(last_key))
 
 
 # ---- Providers ----

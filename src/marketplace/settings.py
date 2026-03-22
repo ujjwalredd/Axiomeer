@@ -46,6 +46,7 @@ SEMANTIC_SEARCH_TIMEOUT_MS: int = int(os.getenv("SEMANTIC_SEARCH_TIMEOUT_MS", "1
 SEMANTIC_SEARCH_MODEL: str = os.getenv("SEMANTIC_SEARCH_MODEL", "all-MiniLM-L6-v2")
 
 # Caching (seconds)
+TRUST_CACHE_TTL: int = int(os.getenv("TRUST_CACHE_TTL", "60"))
 SHOP_CACHE_TTL_SECONDS: int = int(os.getenv("SHOP_CACHE_TTL_SECONDS", "30"))
 PROVIDER_CACHE_TTL_WEATHER: int = int(os.getenv("PROVIDER_CACHE_TTL_WEATHER", "30"))
 PROVIDER_CACHE_TTL_FX: int = int(os.getenv("PROVIDER_CACHE_TTL_FX", "60"))

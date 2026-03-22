@@ -120,7 +120,7 @@ class TestExecuteEndpoint:
         assert r.status_code == 200
         data = r.json()
         assert data["ok"] is False
-        assert "Unknown app_id" in data["validation_errors"]
+        assert any("Unknown app_id" in e for e in data["validation_errors"])
 
     def test_execute_missing_executor_url(self, client):
         no_url_app = {**SAMPLE_APP, "id": "no_url", "executor_url": ""}

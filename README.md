@@ -29,7 +29,16 @@ result = client.shop("get weather in Tokyo")
 | **Natural Language** | Ask in plain English, get the right API |
 | **Manifest Schema** | `http_method` (GET/POST) + `input_schema` for LLM parameter extraction |
 | **Retry Logic** | Automatic retry with backoff on transient provider failures |
+| **Provider Fallback** | Auto-retry with next-ranked provider if primary fails |
+| **Trust Score Cache** | Redis-backed 60s TTL cache — no full-table scan per request |
+| **Real Cost Tracking** | Actual `cost_est_usd` from manifest logged per execution |
+| **User-Scoped Memory** | Conversation history isolated per authenticated user |
+| **Workflow Chaining** | Multi-step `POST /execute/workflow` with inter-step data passing |
+| **SSE Streaming** | `POST /execute/stream` — real-time progress events |
+| **Capabilities API** | `GET /capabilities` — deduplicated capability explorer |
+| **Health Monitoring** | Background task refreshes provider latency every 5 minutes |
 | **Python SDK** | `pip install axiomeer` |
+| **TypeScript SDK** | `npm install @axiomeer/sdk` |
 | **Enterprise Auth** | JWT + API keys + rate limiting |
 
 ---
@@ -88,14 +97,18 @@ git clone https://github.com/ujjwalredd/Axiomeer.git
 cd Axiomeer
 cp .env.example .env
 # Edit .env: set DB_PASSWORD=your_secure_password
+docker-compose build
 docker-compose up -d
 
-# Verify (first startup may take ~2 min for semantic search model)
+# Verify (first startup may take ~2 min for semantic search model download)
 curl http://localhost:8000/health
 # {"status":"ok"}
 
 curl http://localhost:8000/apps | jq 'length'
 # 91
+
+curl http://localhost:8000/capabilities | jq '.count'
+# 41
 ```
 
 **Docker services:** PostgreSQL (port 5433), Redis (6379), API (8000). Auth disabled by default for easy access.
@@ -127,6 +140,31 @@ curl -X POST http://localhost:8000/execute \
 # Export tool schemas for OpenAI/Anthropic function calling
 curl "http://localhost:8000/v1/tools/schemas?format=openai"
 curl "http://localhost:8000/v1/tools/schemas?format=anthropic"
+
+# List all unique capabilities
+curl "http://localhost:8000/capabilities"
+# {"capabilities": ["astronomy", "books", ...], "count": 41}
+
+# Execute with automatic fallback to next-ranked provider
+curl -X POST http://localhost:8000/execute \
+  -H "Content-Type: application/json" \
+  -d '{"app_id": "realtime_weather_agent", "task": "weather in NYC", "inputs": {"lat": 40.7, "lon": -74.0}, "fallback_app_ids": ["openmeteo_forecast"]}'
+
+# Multi-step workflow (pass output of step 0 into step 1)
+curl -X POST http://localhost:8000/execute/workflow \
+  -H "Content-Type: application/json" \
+  -d '{
+    "steps": [
+      {"app_id": "wikipedia_search", "task": "Mount Fuji", "inputs": {"q": "Mount Fuji"}, "output_key": "wiki"},
+      {"app_id": "rest_countries", "task": "Japan", "inputs": {"q": "Japan"}, "output_key": "country"}
+    ]
+  }'
+
+# SSE streaming execution (progress events)
+curl -X POST http://localhost:8000/execute/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"app_id": "realtime_weather_agent", "task": "weather in Tokyo", "inputs": {"lat": 35.67, "lon": 139.65}}'
 
 # Usage dashboard (requires auth)
 curl "http://localhost:8000/v1/dashboard/usage?hours=24" \
@@ -196,6 +234,53 @@ execution = result.execute(client, text="Hello world", target="es")
 print(execution.result)
 ```
 
+### Provider Fallback
+
+Pass `fallback_app_ids` to automatically retry with the next provider on failure:
+
+```python
+execution = client.execute(
+    "realtime_weather_agent",
+    "weather in Tokyo",
+    inputs={"lat": 35.67, "lon": 139.65},
+    fallback_app_ids=["openmeteo_forecast"]
+)
+```
+
+### Workflow Chaining
+
+Execute multi-step workflows where each step can reference prior outputs via `{key.field}` placeholders:
+
+```python
+from axiomeer import AgentMarketplace
+
+client = AgentMarketplace(api_key="axm_xxx")
+
+# Two-step workflow: Wikipedia lookup → country data
+result = client.execute_workflow({
+    "steps": [
+        {"app_id": "wikipedia_search", "task": "Mount Fuji", "inputs": {"q": "Mount Fuji"}, "output_key": "wiki"},
+        {"app_id": "rest_countries", "task": "Japan", "inputs": {"q": "Japan"}, "output_key": "country"}
+    ]
+})
+print(result["steps"][0]["output"]["answer"])
+```
+
+### SSE Streaming
+
+```bash
+curl -N -X POST http://localhost:8000/execute/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{"app_id": "realtime_weather_agent", "task": "weather in Tokyo"}'
+# event: started
+# data: {"app_id": "realtime_weather_agent", "task": "weather in Tokyo"}
+# event: executing
+# data: {"app_id": "realtime_weather_agent", "inputs": {...}}
+# event: result
+# data: {"ok": true, "output": {...}}
+```
+
 #### JavaScript / TypeScript SDK
 
 ```bash
@@ -210,10 +295,22 @@ const marketplace = new AgentMarketplace({ apiKey: 'axm_xxxxx' });
 // Shop and execute in one call
 const execution = await marketplace.shopAndExecute(
   'I need weather data',
-  { location: 'Tokyo' }
+  { lat: 35.67, lon: 139.65 }
 );
+console.log(execution.output);
 
-console.log(execution.result);
+// Multi-step workflow
+const workflow = await marketplace.executeWorkflow({
+  steps: [
+    { app_id: 'wikipedia_search', task: 'Mount Fuji', inputs: { q: 'Mount Fuji' }, output_key: 'wiki' },
+    { app_id: 'rest_countries', task: 'Japan', inputs: { q: 'Japan' } }
+  ]
+});
+console.log(workflow.final_output);
+
+// List capabilities
+const { capabilities } = await marketplace.listCapabilities();
+console.log(capabilities);
 ```
 
 ---
@@ -277,6 +374,8 @@ Manifests support optional `http_method` and `input_schema` for smarter executio
 | API Response (p50) | 145ms |
 | API Response (p95) | 387ms |
 | Throughput | 2,034 req/sec |
+| Trust Score Cache | Redis TTL 60s (avoids full-table scan per /shop) |
+| Health Monitor | Provider latency refresh every 5 min (background) |
 | Test Coverage | 69+ tests passing |
 
 ---
@@ -287,7 +386,7 @@ Manifests support optional `http_method` and `input_schema` for smarter executio
 
 ```
 ├── apps/api/
-│   ├── main.py               # FastAPI application
+│   ├── main.py               # FastAPI application + all endpoints
 │   ├── providers.py          # 50+ provider endpoints
 │   ├── auth_routes.py        # Auth & API key routes
 │   └── routers/
@@ -304,14 +403,15 @@ Manifests support optional `http_method` and `input_schema` for smarter executio
 │   │   └── rate_limiter.py   # Tier-based rate limiting
 │   └── storage/
 │       ├── db.py             # SQLAlchemy setup
-│       └── users.py          # User/APIKey models
-├── sdk/python/               # PyPI package
+│       └── users.py          # User/APIKey/UsageRecord models
+├── sdk/python/               # PyPI package (pip install axiomeer)
+├── sdk/javascript/           # npm package (@axiomeer/sdk)
 ├── manifests/                # 91 API definitions (with http_method, input_schema)
 ├── scripts/
 │   ├── validate_manifests.py # Validate manifests against schema
 │   └── api_health_check.py   # Health check all APIs
 ├── .env.example              # Required environment variables
-└── docker-compose.yml        # PostgreSQL + API
+└── docker-compose.yml        # PostgreSQL + Redis + API
 ```
 
 ---

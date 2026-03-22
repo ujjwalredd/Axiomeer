@@ -125,9 +125,36 @@ class ExecuteRequest(BaseModel):
     app_id: str
     task: str
     inputs: dict = Field(default_factory=dict)
+    fallback_app_ids: List[str] = Field(default_factory=list, description="Ordered list of fallback app IDs to try if the primary fails")
 
     require_citations: bool = True
     client_id: Optional[str] = Field(default=None, max_length=200)
+
+
+class WorkflowStep(BaseModel):
+    app_id: str
+    task: str
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    output_key: str = Field(default="", description="Key for this step's output, usable in subsequent steps via {key.field}")
+
+
+class WorkflowRequest(BaseModel):
+    steps: List[WorkflowStep] = Field(min_length=1, max_length=10)
+    client_id: Optional[str] = Field(default=None, max_length=200)
+
+
+class WorkflowStepResult(BaseModel):
+    step: int
+    app_id: str
+    ok: bool
+    output: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class WorkflowResponse(BaseModel):
+    ok: bool
+    steps: List[WorkflowStepResult]
+    final_output: Optional[Dict[str, Any]] = None
 
 class Provenance(BaseModel):
     sources: List[str] = Field(default_factory=list)

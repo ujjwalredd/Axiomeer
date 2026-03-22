@@ -8,9 +8,12 @@ import {
   AxiomeerConfig,
   AppListing,
   ShopRequest,
-  ShopResult,
+  ShopResponse,
   ExecuteRequest,
-  ExecutionResult,
+  ExecuteResponse,
+  WorkflowRequest,
+  WorkflowResponse,
+  CapabilitiesResponse,
   ListAppsParams,
   HealthResponse,
   AxiomeerError,
@@ -64,7 +67,6 @@ export class AgentMarketplace {
       },
     });
 
-    // Add response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
@@ -73,9 +75,6 @@ export class AgentMarketplace {
     );
   }
 
-  /**
-   * Handle API errors and convert to appropriate exception types
-   */
   private handleError(error: AxiosError): Error {
     if (!error.response) {
       if (error.code === 'ECONNABORTED') {
@@ -91,12 +90,13 @@ export class AgentMarketplace {
     switch (status) {
       case 401:
         return new AuthenticationError();
-      case 429:
+      case 429: {
         const retryAfter = error.response.headers['retry-after'];
         return new RateLimitError(
           'Rate limit exceeded',
           retryAfter ? parseInt(retryAfter) : undefined
         );
+      }
       case 404:
         return new NotFoundError(detail);
       case 422:
@@ -107,122 +107,140 @@ export class AgentMarketplace {
   }
 
   /**
-   * Shop for a tool/API/dataset using natural language
+   * Shop for APIs using natural language
    *
    * @param task Description of what you need
    * @param options Additional shopping options
-   * @returns ShopResult with selected tool and alternatives
+   * @returns ShopResponse with ranked recommendations
    *
    * @example
    * ```typescript
-   * const result = await marketplace.shop('I need to send SMS messages');
-   * console.log(result.selected_app.name);
+   * const result = await marketplace.shop('get weather in Tokyo');
+   * console.log(result.recommendations[0].name);
    * ```
    */
   async shop(
     task: string,
     options: Omit<ShopRequest, 'task'> = {}
-  ): Promise<ShopResult> {
+  ): Promise<ShopResponse> {
     const request: ShopRequest = {
       task,
-      required_capabilities: options.required_capabilities || [],
-      excluded_providers: options.excluded_providers || [],
-      max_cost_usd: options.max_cost_usd,
+      ...options,
     };
-
-    const response = await this.client.post<ShopResult>('/shop', request);
+    const response = await this.client.post<ShopResponse>('/shop', request);
     return response.data;
   }
 
   /**
-   * Execute a tool with given parameters
+   * Execute an API with given parameters
    *
-   * @param appId Application/tool ID to execute
-   * @param params Tool-specific parameters
-   * @returns ExecutionResult with outcome
+   * @param appId Application ID to execute
+   * @param task Natural language task description
+   * @param options Additional execute options (inputs, fallback_app_ids, etc.)
+   * @returns ExecuteResponse with output
    *
    * @example
    * ```typescript
-   * const result = await marketplace.execute('weather-api', {
-   *   location: 'New York'
+   * const result = await marketplace.execute('realtime_weather_agent', 'weather in NYC', {
+   *   inputs: { lat: 40.7, lon: -74.0 }
    * });
-   * console.log(result.result);
+   * console.log(result.output);
    * ```
    */
   async execute(
     appId: string,
-    params: Record<string, any> = {}
-  ): Promise<ExecutionResult> {
+    task: string,
+    options: Omit<ExecuteRequest, 'app_id' | 'task'> = {}
+  ): Promise<ExecuteResponse> {
     const request: ExecuteRequest = {
       app_id: appId,
-      params,
+      task,
+      ...options,
     };
 
-    const response = await this.client.post<ExecutionResult>(
-      '/execute',
-      request
-    );
-
+    const response = await this.client.post<ExecuteResponse>('/execute', request);
     const data = response.data;
 
-    if (!data.success && data.error) {
-      throw new ExecutionError(`Tool execution failed: ${data.error}`, data);
+    if (!data.ok && data.validation_errors?.length > 0) {
+      throw new ExecutionError(
+        `Tool execution failed: ${data.validation_errors.join(', ')}`,
+        data
+      );
     }
 
     return data;
   }
 
   /**
-   * Shop and execute in one call
+   * Shop and execute in one call — finds the best API and runs it
    *
-   * @param task Description of what you need
-   * @param params Parameters to pass to the selected tool
-   * @returns ExecutionResult
+   * @param task Natural language task description
+   * @param inputs Parameters to pass to the selected API
+   * @returns ExecuteResponse
    *
    * @example
    * ```typescript
    * const result = await marketplace.shopAndExecute(
-   *   'I need weather information',
-   *   { location: 'Tokyo' }
+   *   'get weather in Tokyo',
+   *   { lat: 35.67, lon: 139.65 }
    * );
+   * console.log(result.output);
    * ```
    */
   async shopAndExecute(
     task: string,
-    params: Record<string, any> = {}
-  ): Promise<ExecutionResult> {
+    inputs: Record<string, any> = {}
+  ): Promise<ExecuteResponse> {
     const shopResult = await this.shop(task);
-    return this.execute(shopResult.selected_app.app_id, params);
+    if (shopResult.status === 'NO_MATCH' || shopResult.recommendations.length === 0) {
+      throw new AxiomeerError(`No matching API found for task: "${task}"`);
+    }
+    const appId = shopResult.recommendations[0].app_id;
+    return this.execute(appId, task, { inputs });
   }
 
   /**
-   * List available applications in the marketplace
+   * Execute a multi-step workflow
    *
-   * @param params Filtering parameters
-   * @returns Array of AppListing objects
+   * @param request WorkflowRequest with ordered steps
+   * @returns WorkflowResponse with per-step results
    *
    * @example
    * ```typescript
-   * const apps = await marketplace.listApps({ category: 'weather', limit: 10 });
-   * apps.forEach(app => console.log(app.name));
+   * const result = await marketplace.executeWorkflow({
+   *   steps: [
+   *     { app_id: 'realtime_weather_agent', task: 'weather in Tokyo', output_key: 'weather' },
+   *     { app_id: 'wikipedia_agent', task: 'Tokyo climate', inputs: {} }
+   *   ]
+   * });
    * ```
    */
-  async listApps(params: ListAppsParams = {}): Promise<AppListing[]> {
-    const response = await this.client.get<{ apps: AppListing[] }>('/apps', {
-      params: {
-        category: params.category,
-        search: params.search,
-        limit: params.limit || 50,
-      },
-    });
+  async executeWorkflow(request: WorkflowRequest): Promise<WorkflowResponse> {
+    const response = await this.client.post<WorkflowResponse>('/execute/workflow', request);
+    return response.data;
+  }
 
-    return response.data.apps;
+  /**
+   * List available apps in the marketplace
+   *
+   * @param params Filtering parameters
+   * @returns Array of AppListing objects
+   */
+  async listApps(params: ListAppsParams = {}): Promise<AppListing[]> {
+    const response = await this.client.get<AppListing[]>('/apps', { params });
+    return response.data;
+  }
+
+  /**
+   * Get all unique capabilities available in the marketplace
+   */
+  async listCapabilities(): Promise<CapabilitiesResponse> {
+    const response = await this.client.get<CapabilitiesResponse>('/capabilities');
+    return response.data;
   }
 
   /**
    * Check API health status
-   *
-   * @returns Health check response
    */
   async health(): Promise<HealthResponse> {
     const response = await this.client.get<HealthResponse>('/health');
