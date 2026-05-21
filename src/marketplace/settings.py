@@ -58,7 +58,10 @@ PROVIDER_CACHE_TTL_OPENLIB: int = int(os.getenv("PROVIDER_CACHE_TTL_OPENLIB", "3
 PROVIDER_CACHE_TTL_DICTIONARY: int = int(os.getenv("PROVIDER_CACHE_TTL_DICTIONARY", "86400"))
 
 # Authentication
-AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+# Default ON for safety. Set AUTH_ENABLED=false explicitly for local/demo only.
+AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+# Optional escape hatch: allow anonymous access on read endpoints even when AUTH_ENABLED=true.
+ALLOW_ANONYMOUS_READS: bool = os.getenv("ALLOW_ANONYMOUS_READS", "false").lower() in ("true", "1", "yes")
 JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))

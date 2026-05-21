@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a defect in Axiomeer
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. **Do not report security
+        issues here** — see SECURITY.md for private disclosure.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal reproduction (commands, code snippet, request body).
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Axiomeer version / commit
+      placeholder: "v0.2.0 or commit hash"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "Python 3.12 on macOS 14, Docker compose, etc."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      render: text

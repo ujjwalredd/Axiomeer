@@ -10,9 +10,15 @@ from axiomeer.models import ShopResult, ExecutionResult, AppListing
 from axiomeer.exceptions import (
     AxiomeerError,
     AuthenticationError,
+    PermissionError,
     RateLimitError,
     NotFoundError,
+    ConflictError,
+    ValidationError,
     ExecutionError,
+    ServerError,
+    NetworkError,
+    TimeoutError,
 )
 
 __version__ = "0.2.0"
@@ -23,8 +29,14 @@ __all__ = [
     "AppListing",
     "AxiomeerError",
     "AuthenticationError",
+    "PermissionError",
     "RateLimitError",
     "NotFoundError",
+    "ConflictError",
+    "ValidationError",
     "ExecutionError",
+    "ServerError",
+    "NetworkError",
+    "TimeoutError",
     "__version__",
 ]

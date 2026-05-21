@@ -9,11 +9,18 @@ from axiomeer.models import ShopResult, ExecutionResult, AppListing
 from axiomeer.exceptions import (
     AxiomeerError,
     AuthenticationError,
+    PermissionError,
     RateLimitError,
     NotFoundError,
+    ConflictError,
     ExecutionError,
     ValidationError,
+    ServerError,
+    NetworkError,
+    TimeoutError as AxiomeerTimeout,
 )
+
+_REQUEST_ID_HEADER = "X-Request-ID"
 
 
 class AgentMarketplace:
@@ -57,24 +64,63 @@ class AgentMarketplace:
         }
 
     def _handle_response(self, response: requests.Response) -> Dict[str, Any]:
-        """Handle API response and raise appropriate exceptions"""
-        if response.status_code == 200:
+        """Parse response, raising typed exceptions on non-2xx status codes."""
+        request_id = response.headers.get(_REQUEST_ID_HEADER)
+
+        if 200 <= response.status_code < 300:
             return response.json()
-        elif response.status_code == 401:
-            raise AuthenticationError("Invalid API key. Please check your credentials.")
-        elif response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            raise RateLimitError(retry_after=retry_after)
-        elif response.status_code == 404:
-            raise NotFoundError(f"Resource not found: {response.json().get('detail', 'Unknown')}")
-        elif response.status_code == 422:
-            raise ValidationError(f"Validation error: {response.json().get('detail', 'Invalid request')}")
+
+        # Try to parse the new error envelope: {"error": {"code", "message", ...}}
+        # Falls back to the legacy {"detail": "..."} format.
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+
+        if isinstance(body, dict) and isinstance(body.get("error"), dict):
+            err = body["error"]
+            message = err.get("message") or "Unknown error"
+            code = err.get("code")
+            details = err.get("details")
+            request_id = err.get("request_id") or request_id
         else:
-            try:
-                error_detail = response.json().get("detail", "Unknown error")
-            except:
-                error_detail = response.text or "Unknown error"
-            raise AxiomeerError(f"API error ({response.status_code}): {error_detail}")
+            message = (body.get("detail") if isinstance(body, dict) else None) or response.text or "Unknown error"
+            code = None
+            details = body if body else None
+
+        kw = {
+            "status_code": response.status_code,
+            "request_id": request_id,
+            "code": code,
+            "details": details,
+        }
+
+        if response.status_code == 401:
+            raise AuthenticationError(message, **kw)
+        if response.status_code == 403:
+            raise PermissionError(message, **kw)
+        if response.status_code == 404:
+            raise NotFoundError(message, **kw)
+        if response.status_code == 409:
+            raise ConflictError(message, **kw)
+        if response.status_code == 422:
+            raise ValidationError(message, **kw)
+        if response.status_code == 429:
+            retry_after_raw = response.headers.get("Retry-After")
+            retry_after: Optional[int] = None
+            if retry_after_raw and retry_after_raw.isdigit():
+                retry_after = int(retry_after_raw)
+            raise RateLimitError(message, retry_after=retry_after, **kw)
+        if 500 <= response.status_code < 600:
+            raise ServerError(message, **kw)
+        raise AxiomeerError(message, **kw)
+
+    def _wrap_request_errors(self, exc: requests.exceptions.RequestException) -> AxiomeerError:
+        if isinstance(exc, requests.exceptions.Timeout):
+            return AxiomeerTimeout(f"Request timed out after {self.timeout} seconds")
+        if isinstance(exc, requests.exceptions.ConnectionError):
+            return NetworkError(f"Could not connect to Axiomeer API at {self.base_url}")
+        return NetworkError(f"Request failed: {exc}")
 
     def shop(
         self,
@@ -158,12 +204,8 @@ class AgentMarketplace:
                 confidence=confidence,
                 alternatives=alternatives,
             )
-        except requests.exceptions.Timeout:
-            raise AxiomeerError(f"Request timed out after {self.timeout} seconds")
-        except requests.exceptions.ConnectionError:
-            raise AxiomeerError(f"Could not connect to Axiomeer API at {self.base_url}")
         except requests.exceptions.RequestException as e:
-            raise AxiomeerError(f"Request failed: {str(e)}")
+            raise self._wrap_request_errors(e) from e
 
     def execute(
         self,
@@ -231,12 +273,8 @@ class AgentMarketplace:
                 cost_usd=None,  # API doesn't return this
                 error=error_msg,
             )
-        except requests.exceptions.Timeout:
-            raise AxiomeerError(f"Request timed out after {self.timeout} seconds")
-        except requests.exceptions.ConnectionError:
-            raise AxiomeerError(f"Could not connect to Axiomeer API at {self.base_url}")
         except requests.exceptions.RequestException as e:
-            raise AxiomeerError(f"Request failed: {str(e)}")
+            raise self._wrap_request_errors(e) from e
 
     def list_apps(
         self,
@@ -295,12 +333,8 @@ class AgentMarketplace:
                     uptime=item.get("uptime"),
                 ))
             return apps
-        except requests.exceptions.Timeout:
-            raise AxiomeerError(f"Request timed out after {self.timeout} seconds")
-        except requests.exceptions.ConnectionError:
-            raise AxiomeerError(f"Could not connect to Axiomeer API at {self.base_url}")
         except requests.exceptions.RequestException as e:
-            raise AxiomeerError(f"Request failed: {str(e)}")
+            raise self._wrap_request_errors(e) from e
 
     def health(self) -> Dict[str, Any]:
         """

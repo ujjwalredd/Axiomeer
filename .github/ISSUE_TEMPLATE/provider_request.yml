@@ -1,0 +1,43 @@
+name: New provider request
+description: Request a new API/provider manifest in the marketplace
+labels: ["provider", "good first issue"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Provider name
+      placeholder: "OpenWeather One Call API"
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Upstream API URL
+    validations:
+      required: true
+  - type: input
+    id: category
+    attributes:
+      label: Category
+      placeholder: "weather | financial | search | knowledge | ..."
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Capabilities (list)
+      placeholder: |
+        - weather
+        - realtime
+        - citations
+    validations:
+      required: true
+  - type: input
+    id: cost
+    attributes:
+      label: Cost per call (USD)
+      placeholder: "0.0 for free tier"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Auth / rate-limit notes

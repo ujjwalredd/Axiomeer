@@ -4,8 +4,8 @@ HTTP executor for provider calls with retry logic and GET/POST support.
 from __future__ import annotations
 
 import ipaddress
-import json
 import logging
+import os
 import socket
 from typing import Any
 from urllib.parse import urlparse
@@ -47,6 +47,19 @@ def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
     )
 
 
+def _trusted_hosts() -> set[str]:
+    """Hosts allowed to bypass the private-IP / metadata block.
+
+    Used for first-party "internal" providers (Axiomeer's own /providers
+    routes) which legitimately resolve to loopback or RFC1918 addresses in
+    Docker/Kubernetes deployments. Configure via:
+
+        EXECUTOR_TRUSTED_HOSTS=host1,host2,127.0.0.1
+    """
+    raw = os.getenv("EXECUTOR_TRUSTED_HOSTS", "127.0.0.1,localhost")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
 def validate_safe_url(url: str) -> str:
     """
     Validate URL is safe to fetch (SSRF protection).
@@ -56,6 +69,9 @@ def validate_safe_url(url: str) -> str:
       - Hostname is present
       - Hostname is not a known cloud-metadata / loopback alias
       - All resolved IPs are public (no RFC1918, loopback, link-local, etc.)
+      - EXCEPT when the literal hostname is in EXECUTOR_TRUSTED_HOSTS, in
+        which case private/loopback addresses are permitted. This is required
+        for first-party internal providers under the same deployment.
 
     Returns the input URL unchanged on success.
     Raises UnsafeURLError on failure.
@@ -72,6 +88,9 @@ def validate_safe_url(url: str) -> str:
         raise UnsafeURLError("URL must include a hostname")
 
     host_lc = hostname.lower()
+    trusted = _trusted_hosts()
+    if host_lc in trusted:
+        return url
     if host_lc in _BLOCKED_HOSTNAMES:
         raise UnsafeURLError(f"Hostname not allowed: {hostname}")
 
@@ -106,9 +125,32 @@ def validate_safe_url(url: str) -> str:
     return url
 
 
+_shared_async_client: httpx.AsyncClient | None = None
+
+
+def get_shared_async_client() -> httpx.AsyncClient:
+    """Lazy-init a process-wide AsyncClient. Reusing the client preserves
+    HTTP connection pools and avoids TLS handshake cost per provider call."""
+    global _shared_async_client
+    if _shared_async_client is None or _shared_async_client.is_closed:
+        _shared_async_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+    return _shared_async_client
+
+
+async def close_shared_async_client() -> None:
+    global _shared_async_client
+    if _shared_async_client is not None and not _shared_async_client.is_closed:
+        await _shared_async_client.aclose()
+    _shared_async_client = None
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
+    # Retry transient network errors only. Do not retry on CircuitOpenError —
+    # the breaker has already decided this host is unhealthy.
     retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     reraise=True,
 )
@@ -139,26 +181,25 @@ async def execute_http(
 
     validate_safe_url(url)
 
-    async with httpx.AsyncClient() as client:
+    from marketplace.core.circuit_breaker import call_async
+
+    async def _do() -> dict[str, Any]:
+        client = get_shared_async_client()
         if method == "POST":
-            response = await client.post(
-                url,
-                json=params,
-                timeout=timeout,
-            )
+            response = await client.post(url, json=params, timeout=timeout)
         else:
-            response = await client.get(
-                url,
-                params=params,
-                timeout=timeout,
-            )
+            response = await client.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         return response.json()
+
+    return await call_async(url, _do)
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
+    # Retry transient network errors only. Do not retry on CircuitOpenError —
+    # the breaker has already decided this host is unhealthy.
     retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
     reraise=True,
 )
@@ -177,10 +218,15 @@ def execute_http_sync(
 
     validate_safe_url(url)
 
-    with httpx.Client() as client:
-        if method == "POST":
-            response = client.post(url, json=params, timeout=timeout)
-        else:
-            response = client.get(url, params=params, timeout=timeout)
-        response.raise_for_status()
-        return response.json()
+    from marketplace.core.circuit_breaker import call_sync
+
+    def _do() -> dict[str, Any]:
+        with httpx.Client() as client:
+            if method == "POST":
+                response = client.post(url, json=params, timeout=timeout)
+            else:
+                response = client.get(url, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+
+    return call_sync(url, _do)
