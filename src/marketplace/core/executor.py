@@ -3,9 +3,12 @@ HTTP executor for provider calls with retry logic and GET/POST support.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import socket
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from tenacity import (
@@ -16,6 +19,91 @@ from tenacity import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_BLOCKED_HOSTNAMES = {
+    "metadata.google.internal",
+    "metadata.goog",
+    "metadata.azure.com",
+    "metadata",
+    "localhost",
+    "ip6-localhost",
+    "ip6-loopback",
+}
+
+
+class UnsafeURLError(ValueError):
+    """Raised when a URL targets a disallowed host (SSRF protection)."""
+
+
+def _ip_is_blocked(ip: ipaddress._BaseAddress) -> bool:
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def validate_safe_url(url: str) -> str:
+    """
+    Validate URL is safe to fetch (SSRF protection).
+
+    Enforces:
+      - Scheme is http or https
+      - Hostname is present
+      - Hostname is not a known cloud-metadata / loopback alias
+      - All resolved IPs are public (no RFC1918, loopback, link-local, etc.)
+
+    Returns the input URL unchanged on success.
+    Raises UnsafeURLError on failure.
+    """
+    if not url or not isinstance(url, str):
+        raise UnsafeURLError("URL is required")
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise UnsafeURLError(f"URL scheme must be http or https, got: {parsed.scheme!r}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise UnsafeURLError("URL must include a hostname")
+
+    host_lc = hostname.lower()
+    if host_lc in _BLOCKED_HOSTNAMES:
+        raise UnsafeURLError(f"Hostname not allowed: {hostname}")
+
+    # If the hostname is an IP literal, check it directly.
+    try:
+        ip_literal = ipaddress.ip_address(host_lc)
+        if _ip_is_blocked(ip_literal):
+            raise UnsafeURLError(f"IP address not allowed: {ip_literal}")
+        return url
+    except ValueError:
+        pass
+
+    # Resolve DNS and verify every returned address is public.
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise UnsafeURLError(f"Unable to resolve host {hostname!r}: {exc}") from exc
+
+    seen = set()
+    for info in infos:
+        addr = info[4][0]
+        if addr in seen:
+            continue
+        seen.add(addr)
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            raise UnsafeURLError(f"Resolved address is not a valid IP: {addr}")
+        if _ip_is_blocked(ip):
+            raise UnsafeURLError(f"Host {hostname} resolves to disallowed address {addr}")
+
+    return url
 
 
 @retry(
@@ -48,6 +136,8 @@ async def execute_http(
     method = (method or "GET").upper()
     if method not in ("GET", "POST"):
         method = "GET"
+
+    validate_safe_url(url)
 
     async with httpx.AsyncClient() as client:
         if method == "POST":
@@ -84,6 +174,8 @@ def execute_http_sync(
     method = (method or "GET").upper()
     if method not in ("GET", "POST"):
         method = "GET"
+
+    validate_safe_url(url)
 
     with httpx.Client() as client:
         if method == "POST":

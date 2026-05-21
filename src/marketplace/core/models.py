@@ -80,6 +80,17 @@ class AppCreate(BaseModel):
     # Optional metadata
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("executor_url", mode="after")
+    @classmethod
+    def validate_executor_url(cls, value: str) -> str:
+        if not value:
+            return value
+        from marketplace.core.executor import validate_safe_url, UnsafeURLError
+        try:
+            return validate_safe_url(value)
+        except UnsafeURLError as exc:
+            raise ValueError(str(exc))
+
     @field_validator("capabilities", mode="before")
     @classmethod
     def normalize_capabilities(cls, value):
