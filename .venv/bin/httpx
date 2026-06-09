@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/ujjwalreddyks/Desktop/Desktop/Ai Market Place/.venv/bin/python" "$0" "$@"
-' '''
+#!/Users/ujjwalreddyks/Desktop/Axiomeer/.venv/bin/python3.12
 import sys
 from httpx import main
 if __name__ == '__main__':

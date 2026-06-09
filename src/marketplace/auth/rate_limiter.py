@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from marketplace.storage.users import User, RateLimit
 from marketplace.settings import (
-    RATE_LIMIT_ENABLED,
+    is_rate_limit_enabled,
     RATE_LIMIT_FREE_TIER_PER_HOUR,
     RATE_LIMIT_STARTER_TIER_PER_HOUR,
     RATE_LIMIT_PRO_TIER_PER_HOUR,
@@ -43,7 +43,7 @@ def check_rate_limit(
     Raises:
         HTTPException: 429 if rate limit exceeded
     """
-    if not RATE_LIMIT_ENABLED:
+    if not is_rate_limit_enabled():
         return
 
     # Get tier-based limit
@@ -112,7 +112,7 @@ def get_rate_limit_status(db: Session, user: User, endpoint: str = "global") -> 
     Returns:
         Dictionary with rate limit information
     """
-    if not RATE_LIMIT_ENABLED:
+    if not is_rate_limit_enabled():
         return {
             "enabled": False,
             "limit": None,

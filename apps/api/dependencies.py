@@ -47,7 +47,7 @@ def scoped_client_id(client_id: str | None, user: User) -> str | None:
     """Scope client_id to authenticated user to prevent cross-user history leakage."""
     if not client_id:
         return None
-    from marketplace.settings import AUTH_ENABLED
-    if AUTH_ENABLED and user.id > 0:
+    from marketplace.settings import is_auth_enabled
+    if is_auth_enabled() and user.id > 0:
         return f"u{user.id}:{client_id}"
     return client_id

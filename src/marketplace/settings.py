@@ -60,6 +60,17 @@ PROVIDER_CACHE_TTL_DICTIONARY: int = int(os.getenv("PROVIDER_CACHE_TTL_DICTIONAR
 # Authentication
 # Default ON for safety. Set AUTH_ENABLED=false explicitly for local/demo only.
 AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+
+
+def is_auth_enabled() -> bool:
+    """Read AUTH_ENABLED live from the environment.
+
+    Unlike the module-level AUTH_ENABLED constant (frozen at import), this
+    reflects runtime changes to the env var. Used by request-time dependencies
+    so the toggle is honored after import (e.g. in tests and dynamic configs).
+    """
+    return os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+
 # Optional escape hatch: allow anonymous access on read endpoints even when AUTH_ENABLED=true.
 ALLOW_ANONYMOUS_READS: bool = os.getenv("ALLOW_ANONYMOUS_READS", "false").lower() in ("true", "1", "yes")
 JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
@@ -81,6 +92,12 @@ if AUTH_ENABLED and len(JWT_SECRET_KEY) < 32:
 
 # Rate Limiting
 RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ("true", "1", "yes")
+
+
+def is_rate_limit_enabled() -> bool:
+    """Read RATE_LIMIT_ENABLED live from the environment (see is_auth_enabled)."""
+    return os.getenv("RATE_LIMIT_ENABLED", "false").lower() in ("true", "1", "yes")
+
 RATE_LIMIT_FREE_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_FREE_TIER_PER_HOUR", "100"))
 RATE_LIMIT_STARTER_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_STARTER_TIER_PER_HOUR", "1000"))
 RATE_LIMIT_PRO_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_PRO_TIER_PER_HOUR", "10000"))

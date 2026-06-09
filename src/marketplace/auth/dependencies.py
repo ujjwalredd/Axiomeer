@@ -12,7 +12,7 @@ from marketplace.storage.db import SessionLocal
 from marketplace.storage.users import User, APIKey
 from marketplace.auth.security import verify_token
 from marketplace.auth.rate_limiter import check_rate_limit
-from marketplace.settings import AUTH_ENABLED, API_KEY_HEADER
+from marketplace.settings import is_auth_enabled, API_KEY_HEADER
 
 
 # HTTP Bearer security scheme for JWT tokens
@@ -52,7 +52,7 @@ async def get_current_user_optional(
     Returns:
         User object if authenticated, None otherwise
     """
-    if not AUTH_ENABLED:
+    if not is_auth_enabled():
         return None
 
     # Try API key authentication first
@@ -110,7 +110,7 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if not authenticated and AUTH_ENABLED=true
     """
-    if not AUTH_ENABLED:
+    if not is_auth_enabled():
         # Backward compatibility: create anonymous user when auth disabled
         # This allows endpoints to work without authentication
         now = datetime.now(timezone.utc)
