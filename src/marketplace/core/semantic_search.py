@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +43,9 @@ class SemanticSearchEngine:
         self.enabled = enabled
         self._model = None
         self._index = None
-        self._app_ids: List[str] = []
+        self._app_ids: list[str] = []
         self._initialized = False
-        self._init_error: Optional[str] = None
+        self._init_error: str | None = None
 
     def _lazy_init(self) -> bool:
         """
@@ -64,9 +63,9 @@ class SemanticSearchEngine:
             return False
 
         try:
-            import numpy as np
-            from sentence_transformers import SentenceTransformer
             import faiss
+            import numpy as np  # noqa: F401  # probe import: verify numpy availability
+            from sentence_transformers import SentenceTransformer
 
             logger.info(f"Initializing semantic search with model: {self.model_name}")
             start_time = time.perf_counter()
@@ -99,7 +98,7 @@ class SemanticSearchEngine:
             self._initialized = True
             return False
 
-    def add_products(self, products: List[dict]) -> bool:
+    def add_products(self, products: list[dict]) -> bool:
         """
         Add products to the semantic search index.
 
@@ -113,7 +112,6 @@ class SemanticSearchEngine:
             return False
 
         try:
-            import numpy as np
             import faiss
 
             if not products:
@@ -166,8 +164,8 @@ class SemanticSearchEngine:
         self,
         query: str,
         top_k: int = 10,
-        timeout_ms: Optional[int] = None
-    ) -> Tuple[List[SemanticSearchResult], int]:
+        timeout_ms: int | None = None
+    ) -> tuple[list[SemanticSearchResult], int]:
         """
         Search for products semantically similar to the query.
 
@@ -185,7 +183,6 @@ class SemanticSearchEngine:
             return [], 0
 
         try:
-            import numpy as np
             import faiss
 
             if not query or not query.strip():
@@ -208,7 +205,7 @@ class SemanticSearchEngine:
 
             # Build results
             results = []
-            for idx, score in zip(indices[0], scores[0]):
+            for idx, score in zip(indices[0], scores[0], strict=False):
                 if 0 <= idx < len(self._app_ids):
                     results.append(SemanticSearchResult(
                         app_id=self._app_ids[idx],

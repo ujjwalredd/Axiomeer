@@ -3,7 +3,7 @@ API v1 router: tools schemas, dashboard.
 """
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from marketplace.auth.dependencies import get_current_user
 from marketplace.storage.db import SessionLocal
 from marketplace.storage.models import AppListing
-from marketplace.storage.users import User, UsageRecord
+from marketplace.storage.users import UsageRecord, User
 
 router = APIRouter(prefix="/v1", tags=["v1"])
 
@@ -31,13 +31,13 @@ def get_db():
 def get_tool_schemas(
     format: str = Query("openai", description="openai or anthropic"),
     db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Export all tools as schemas for OpenAI function calling or Anthropic tool use.
     Use these schemas for AI agents to discover and call Axiomeer APIs.
     """
     rows = db.query(AppListing).all()
-    tools: List[Dict[str, Any]] = []
+    tools: list[dict[str, Any]] = []
 
     for r in rows:
         meta = json.loads(r.extra_metadata or "{}")
@@ -83,7 +83,7 @@ def get_usage_dashboard(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     hours: int = Query(24, ge=1, le=168, description="Hours to look back"),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Usage dashboard: requests, cost per endpoint for the authenticated user.
     """
@@ -98,7 +98,7 @@ def get_usage_dashboard(
         .all()
     )
 
-    by_endpoint: Dict[str, Dict[str, Any]] = {}
+    by_endpoint: dict[str, dict[str, Any]] = {}
     for r in records:
         key = r.endpoint
         if key not in by_endpoint:

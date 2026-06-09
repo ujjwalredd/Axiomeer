@@ -8,11 +8,11 @@ import logging
 import os
 import time
 from threading import Lock
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_redis_client: Optional[Any] = None
+_redis_client: Any | None = None
 _memory_store: dict[str, dict] = {}
 _memory_lock = Lock()
 
@@ -35,7 +35,7 @@ def _init_redis() -> bool:
         return False
 
 
-def cache_get(key: str) -> Optional[Any]:
+def cache_get(key: str) -> Any | None:
     """Get value from cache. Returns None if missing or expired."""
     if _init_redis():
         try:

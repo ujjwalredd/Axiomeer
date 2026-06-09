@@ -2,9 +2,9 @@
 Pydantic models for authentication requests and responses.
 """
 
-from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserCreate(BaseModel):
@@ -42,8 +42,8 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     """Decoded token data."""
-    user_id: Optional[int] = None
-    email: Optional[str] = None
+    user_id: int | None = None
+    email: str | None = None
 
 
 class APIKeyCreate(BaseModel):
@@ -58,8 +58,8 @@ class APIKeyOut(BaseModel):
     key_prefix: str
     is_active: bool
     created_at: datetime
-    last_used: Optional[datetime]
-    expires_at: Optional[datetime]
+    last_used: datetime | None
+    expires_at: datetime | None
 
     class Config:
         from_attributes = True

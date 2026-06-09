@@ -1,5 +1,5 @@
-from marketplace.core.cap_extractor import extract_capabilities
 import marketplace.core.cap_extractor as cap_extractor
+from marketplace.core.cap_extractor import extract_capabilities
 
 
 class TestLLMOnlyCaps:

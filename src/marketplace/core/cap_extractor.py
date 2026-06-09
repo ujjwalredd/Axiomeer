@@ -1,5 +1,6 @@
 import json
-from marketplace.llm.ollama_client import ollama_generate, OllamaConnectionError
+
+from marketplace.llm.ollama_client import OllamaConnectionError, ollama_generate
 from marketplace.settings import ROUTER_MODEL
 
 ALLOWED_CAPS = {"weather", "finance", "search", "realtime", "citations", "math", "coding", "docs", "summarize", "translate"}

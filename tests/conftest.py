@@ -1,4 +1,5 @@
 import os
+
 import pytest
 
 # Must be set before any marketplace imports

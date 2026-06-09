@@ -1,13 +1,15 @@
 import inspect
-import typer
-import requests
-import click
-import re
+import json
 import os
+import re
+from pathlib import Path
+
+import click
+import requests
+import typer
 from rich import print
 from rich.table import Table
-import json
-from pathlib import Path
+
 from marketplace.core.cap_extractor import extract_capabilities
 from marketplace.settings import API_BASE_URL
 
@@ -86,7 +88,7 @@ def _post(path: str, payload: dict):
             print("1. Create an API key at: http://localhost:8000/docs")
             print("2. Set it: [cyan]export AXIOMEER_API_KEY=your_key[/cyan]")
             print("3. Or disable auth in production by setting AUTH_ENABLED=false")
-            raise SystemExit(1)
+            raise SystemExit(1) from None
         raise
 
 
@@ -107,7 +109,7 @@ def _get(path: str):
             print("To use the CLI with authentication enabled:")
             print("1. Create an API key at: http://localhost:8000/docs")
             print("2. Set it: [cyan]export AXIOMEER_API_KEY=your_key[/cyan]")
-            raise SystemExit(1)
+            raise SystemExit(1) from None
         raise
 
 
@@ -161,8 +163,7 @@ def _extract_subject(question: str) -> str | None:
             subject = re.sub(r"\b(population|gdp|capital|area|currency)\b.*$", "", subject, flags=re.IGNORECASE).strip()
             subject = re.sub(r"^wikidata\s+entity\s+for\s+", "", subject, flags=re.IGNORECASE).strip()
             subject = re.sub(r"^entity\s+for\s+", "", subject, flags=re.IGNORECASE).strip()
-            subject = re.sub(r"[?.!,;:]+$", "", subject)
-            return subject
+            return re.sub(r"[?.!,;:]+$", "", subject)
     return None
 
 
@@ -394,10 +395,7 @@ def run(run_id: int):
 @app.command()
 def trust(app_id: str = ""):
     """Show trust scores for all apps or a single app."""
-    if app_id:
-        rows = [_get(f"/apps/{app_id}/trust")]
-    else:
-        rows = _get("/trust")
+    rows = [_get(f"/apps/{app_id}/trust")] if app_id else _get("/trust")
 
     t = Table(title="App Trust Scores")
     t.add_column("app_id")

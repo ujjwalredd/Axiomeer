@@ -3,11 +3,12 @@ Tests for rate limiting functionality.
 """
 
 import os
+from datetime import datetime, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timedelta, timezone
 
 # Set environment variables before imports
 os.environ["AUTH_ENABLED"] = "true"
@@ -18,16 +19,12 @@ os.environ["RATE_LIMIT_PRO_TIER_PER_HOUR"] = "20"
 os.environ["DATABASE_URL"] = "sqlite:///./test_rate_limit.db"
 
 from apps.api.main import app
-from marketplace.storage.db import Base
 from marketplace.auth.dependencies import get_db
-from marketplace.storage.users import User, APIKey, RateLimit, UsageRecord
 from marketplace.auth.security import get_password_hash
+from marketplace.storage.db import Base
 
 # Import all models to ensure all tables are created
-from marketplace.storage.models import AppListing
-from marketplace.storage.runs import Run
-from marketplace.storage.messages import ConversationMessage
-
+from marketplace.storage.users import APIKey, RateLimit, User
 
 # Test database setup
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_rate_limit.db"
@@ -44,15 +41,27 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-
-
 @pytest.fixture(scope="function", autouse=True)
 def setup_database():
-    """Create fresh database for each test."""
+    """Create fresh database for each test, and pin global state for isolation.
+
+    Env is read live (see marketplace.settings) and app.dependency_overrides is a
+    shared global; pin auth + rate limiting (with low test tier limits) and route
+    db access to this module's engine per test so collection order with other test
+    modules can't break these tests.
+    """
+    os.environ["AUTH_ENABLED"] = "true"
+    os.environ["RATE_LIMIT_ENABLED"] = "true"
+    os.environ["RATE_LIMIT_FREE_TIER_PER_HOUR"] = "5"
+    os.environ["RATE_LIMIT_STARTER_TIER_PER_HOUR"] = "10"
+    os.environ["RATE_LIMIT_PRO_TIER_PER_HOUR"] = "20"
+    saved_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved_overrides)
 
 
 @pytest.fixture
@@ -291,7 +300,7 @@ class TestRateLimitWindow:
         assert response.status_code == 200
 
         # Check that rate limit record was created
-        user_id = free_tier_user["user"]["id"]
+        user_id = free_tier_user["user"].id
         rate_record = db_session.query(RateLimit).filter(
             RateLimit.identifier == f"user_{user_id}",
             RateLimit.identifier_type == "user"
@@ -305,7 +314,7 @@ class TestRateLimitWindow:
         """Test that rate limit counter increments with each request."""
         api_key = free_tier_user["api_key"]
         headers = {"X-API-Key": api_key}
-        user_id = free_tier_user["user"]["id"]
+        user_id = free_tier_user["user"].id
 
         # Make multiple requests
         for i in range(1, 4):
@@ -316,7 +325,9 @@ class TestRateLimitWindow:
             )
             assert response.status_code == 200
 
-            # Check counter
+            # The request was committed by a different session (override_get_db);
+            # expire our session's identity map so we read the fresh row, not a cached one.
+            db_session.expire_all()
             rate_record = db_session.query(RateLimit).filter(
                 RateLimit.identifier == f"user_{user_id}"
             ).first()
@@ -335,6 +346,7 @@ class TestRateLimitDisabled:
         try:
             # Reload the module to pick up new setting
             import importlib
+
             import marketplace.auth.rate_limiter
             importlib.reload(marketplace.auth.rate_limiter)
 
@@ -373,9 +385,8 @@ class TestRateLimitExecuteEndpoint:
                 "/execute",
                 json={
                     "app_id": "test-app",
-                    "input_data": {"query": "test"},
-                    "parameters": {},
-                    "metadata": {}
+                    "task": "test",
+                    "inputs": {}
                 },
                 headers=headers
             )
@@ -387,9 +398,8 @@ class TestRateLimitExecuteEndpoint:
             "/execute",
             json={
                 "app_id": "test-app",
-                "input_data": {"query": "test"},
-                "parameters": {},
-                "metadata": {}
+                "task": "test",
+                "inputs": {}
             },
             headers=headers
         )

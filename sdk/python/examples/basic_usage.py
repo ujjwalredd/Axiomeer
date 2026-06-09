@@ -30,7 +30,7 @@ print("-" * 60)
 execution = result.execute(marketplace, location="New York")
 
 if execution.success:
-    print(f"✓ Success!")
+    print("✓ Success!")
     print(f"  Result: {execution.result}")
     print(f"  Execution time: {execution.execution_time_ms:.2f}ms")
 else:
@@ -46,7 +46,7 @@ execution = marketplace.execute(
 )
 
 if execution.success:
-    print(f"✓ Success!")
+    print("✓ Success!")
     print(f"  Result: {execution.result[:200]}...")  # First 200 chars
 else:
     print(f"✗ Failed: {execution.error}")

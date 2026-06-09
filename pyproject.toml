@@ -62,11 +62,17 @@ ignore = [
   "E501",  # line length handled by formatter
   "S101",  # asserts OK in tests
   "B008",  # FastAPI Depends() in defaults
+  "S110",  # deliberate best-effort try/except/pass (cache, cleanup, optional paths)
+  "S112",  # deliberate best-effort try/except/continue
+  "S311",  # non-crypto random is fine (games, jitter, sampling)
+  "S105",  # "bearer"/"token_type" literals flagged as passwords (false positive)
+  "S106",  # token_type="bearer" kwarg flagged as password (false positive)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S", "B"]
+"tests/**" = ["S", "B", "E402"]
 "scripts/**" = ["S"]
+"apps/api/main.py" = ["E402"]  # logging configured before router imports (deliberate)
 
 [tool.mypy]
 python_version = "3.10"

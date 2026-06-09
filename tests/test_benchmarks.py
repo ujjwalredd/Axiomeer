@@ -8,9 +8,9 @@ Tests include:
 """
 
 import time
+
 import pytest
 import requests
-from typing import Dict, Any
 
 API_BASE = "http://127.0.0.1:8000"
 
@@ -170,7 +170,7 @@ class TestFakeQueryRejection:
         assert data["status"] == "NO_MATCH"
 
         print(f"\n✓ Impossible constraint rejected: {latency:.0f}ms")
-        print(f"  Reason: max_latency_ms=1 is impossible")
+        print("  Reason: max_latency_ms=1 is impossible")
 
     def test_nonexistent_product_returns_no_match(self):
         """Verify queries for non-existent products return NO_MATCH."""
@@ -265,7 +265,7 @@ class TestLatencyBenchmarks:
             assert response.status_code == 200
             results[endpoint] = latency
 
-        print(f"\n✓ API Endpoint Latencies:")
+        print("\n✓ API Endpoint Latencies:")
         for endpoint, latency in results.items():
             print(f"  {endpoint}: {latency:.0f}ms")
 
@@ -311,7 +311,7 @@ class TestLatencyBenchmarks:
 
         # Execution may succeed or fail validation
         # Both are acceptable for latency benchmarking
-        print(f"\n✓ End-to-End Pipeline:")
+        print("\n✓ End-to-End Pipeline:")
         print(f"  Shop: {shop_latency:.0f}ms")
         print(f"  Execute: {exec_latency:.0f}ms")
         print(f"  Total: {total_latency:.0f}ms")

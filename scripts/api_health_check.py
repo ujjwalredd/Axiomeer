@@ -5,14 +5,14 @@ Tests all 91 APIs and reports success/failure status
 """
 
 import json
-import os
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any
+
 import requests
 from tabulate import tabulate
-from collections import defaultdict
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +27,7 @@ class Colors:
     BOLD = '\033[1m'
 
 
-def load_all_manifests() -> List[Dict[str, Any]]:
+def load_all_manifests() -> list[dict[str, Any]]:
     """Load all API manifest files"""
     manifests = []
     manifests_dir = Path("manifests/categories")
@@ -44,7 +44,7 @@ def load_all_manifests() -> List[Dict[str, Any]]:
     return manifests
 
 
-def test_api(api_data: Dict[str, Any], base_url: str = "http://localhost:8000") -> Dict[str, Any]:
+def test_api(api_data: dict[str, Any], base_url: str = "http://localhost:8000") -> dict[str, Any]:
     """
     Test a single API endpoint
 
@@ -132,15 +132,14 @@ def test_api(api_data: Dict[str, Any], base_url: str = "http://localhost:8000") 
                 'response_time_ms': elapsed_ms,
                 'response_sample': sample
             }
-        else:
-            return {
-                'success': False,
-                'status_code': response.status_code,
-                'error': f"HTTP {response.status_code}: {response.text[:200]}",
-                'error_type': 'http_error',
-                'response_time_ms': elapsed_ms,
-                'response_sample': ''
-            }
+        return {
+            'success': False,
+            'status_code': response.status_code,
+            'error': f"HTTP {response.status_code}: {response.text[:200]}",
+            'error_type': 'http_error',
+            'response_time_ms': elapsed_ms,
+            'response_sample': ''
+        }
 
     except requests.exceptions.Timeout:
         return {
@@ -271,14 +270,13 @@ def main():
     if pass_rate == 100:
         print(f"{Colors.GREEN}✓ ALL APIS PASSING - PRODUCTION READY{Colors.END}")
         return 0
-    elif pass_rate >= 90:
+    if pass_rate >= 90:
         print(f"{Colors.YELLOW}⚠ {failure_count} APIs failing ({100-pass_rate:.1f}%) - NEEDS ATTENTION{Colors.END}")
         print(f"{Colors.YELLOW}Fix failing APIs before production deployment{Colors.END}")
         return 1
-    else:
-        print(f"{Colors.RED}✗ {failure_count} APIs failing ({100-pass_rate:.1f}%) - NOT PRODUCTION READY{Colors.END}")
-        print(f"{Colors.RED}Critical issues must be resolved before deployment{Colors.END}")
-        return 1
+    print(f"{Colors.RED}✗ {failure_count} APIs failing ({100-pass_rate:.1f}%) - NOT PRODUCTION READY{Colors.END}")
+    print(f"{Colors.RED}Critical issues must be resolved before deployment{Colors.END}")
+    return 1
 
 
 if __name__ == "__main__":

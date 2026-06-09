@@ -1,6 +1,8 @@
-from sqlalchemy import String, Integer, Boolean, Text, Float
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from marketplace.storage.db import Base
+
 
 class Run(Base):
     __tablename__ = "runs"

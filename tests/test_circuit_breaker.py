@@ -4,7 +4,6 @@ Unit tests for the per-host circuit breaker.
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 
 import pytest

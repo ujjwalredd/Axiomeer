@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -47,7 +47,7 @@ async def security_headers_middleware(
     return response
 
 
-def _envelope(code: str, message: str, request_id: str | None, details=None, status_code: int = 400):
+def _envelope(code: str, message: str, request_id: str | None, details=None, status_code: int = 400, headers=None):
     # `detail` is preserved alongside the structured `error` envelope so that
     # legacy SDK clients (which read FastAPI's default {"detail": "..."} shape)
     # keep working after the upgrade.
@@ -57,7 +57,7 @@ def _envelope(code: str, message: str, request_id: str | None, details=None, sta
     }
     if details is not None:
         body["error"]["details"] = details
-    return JSONResponse(status_code=status_code, content=body)
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -75,7 +75,12 @@ def register_exception_handlers(app: FastAPI) -> None:
             422: "unprocessable_entity",
             429: "rate_limited",
         }.get(exc.status_code, "http_error")
-        return _envelope(code, str(exc.detail), rid, status_code=exc.status_code)
+        # Preserve any headers the raiser attached (e.g. Retry-After / X-RateLimit-*
+        # on 429, WWW-Authenticate on 401).
+        return _envelope(
+            code, str(exc.detail), rid, status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc(request: Request, exc: RequestValidationError):

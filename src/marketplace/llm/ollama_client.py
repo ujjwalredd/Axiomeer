@@ -1,5 +1,6 @@
 import requests
-from marketplace.settings import OLLAMA_URL, OLLAMA_TIMEOUT
+
+from marketplace.settings import OLLAMA_TIMEOUT, OLLAMA_URL
 
 
 class OllamaConnectionError(RuntimeError):
@@ -25,15 +26,15 @@ def ollama_generate(
             timeout=timeout if timeout is not None else OLLAMA_TIMEOUT,
         )
         r.raise_for_status()
-    except requests.ConnectionError:
+    except requests.ConnectionError as e:
         raise OllamaConnectionError(
             f"Cannot connect to Ollama at {OLLAMA_URL}. "
             "Make sure Ollama is running: https://ollama.ai"
-        )
-    except requests.Timeout:
+        ) from e
+    except requests.Timeout as e:
         raise OllamaConnectionError(
             f"Ollama request timed out after {OLLAMA_TIMEOUT}s. "
             "The model may still be loading — try again."
-        )
+        ) from e
     data = r.json()
     return data.get("response", "").strip()

@@ -13,9 +13,9 @@ from urllib.parse import urlparse
 import httpx
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,8 +117,8 @@ def validate_safe_url(url: str) -> str:
         seen.add(addr)
         try:
             ip = ipaddress.ip_address(addr)
-        except ValueError:
-            raise UnsafeURLError(f"Resolved address is not a valid IP: {addr}")
+        except ValueError as e:
+            raise UnsafeURLError(f"Resolved address is not a valid IP: {addr}") from e
         if _ip_is_blocked(ip):
             raise UnsafeURLError(f"Host {hostname} resolves to disallowed address {addr}")
 

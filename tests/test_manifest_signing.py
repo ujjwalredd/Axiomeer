@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from marketplace.core import manifest_signing as ms
 
 

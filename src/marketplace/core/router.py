@@ -1,21 +1,22 @@
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Iterable, List, Tuple, Optional
+
 import math
 import re
 import time
+from collections.abc import Iterable
 
-from marketplace.core.models import ShopRequest, Recommendation
+from marketplace.core.models import Recommendation, ShopRequest
 from marketplace.settings import (
-    W_CAP,
-    W_LAT,
-    W_COST,
-    W_TRUST,
-    W_REL,
     MIN_CAP_COVERAGE,
     MIN_RELEVANCE_SCORE,
     MIN_TOTAL_SCORE,
+    W_CAP,
+    W_COST,
+    W_LAT,
+    W_REL,
+    W_TRUST,
 )
+
 
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
@@ -94,10 +95,10 @@ def _cost_score(cost: float, max_cost: float | None) -> float:
 
 def recommend(
     req: ShopRequest,
-    apps: List[dict],
+    apps: list[dict],
     k: int = 3,
-    semantic_search_engine: Optional[object] = None
-) -> Tuple[List[Recommendation], List[str], dict]:
+    semantic_search_engine: object | None = None
+) -> tuple[list[Recommendation], list[str], dict]:
     """
     apps: list of dicts with keys:
       id, name, description, capabilities(list[str]), freshness, citations_supported,
@@ -156,7 +157,7 @@ def recommend(
 
         if semantic_search_engine.is_available():
             try:
-                from marketplace.settings import SEMANTIC_SEARCH_TOP_K, SEMANTIC_SEARCH_TIMEOUT_MS
+                from marketplace.settings import SEMANTIC_SEARCH_TIMEOUT_MS, SEMANTIC_SEARCH_TOP_K
 
                 sem_results, sem_time_ms = semantic_search_engine.search(
                     query=req.task,
@@ -203,7 +204,7 @@ def recommend(
 
     # ---- Score and rank ----
     scoring_start = time.perf_counter()
-    scored: List[tuple[float, dict, list[str]]] = []
+    scored: list[tuple[float, dict, list[str]]] = []
     for idx, (a, app_caps) in enumerate(filtered):
         cap = _capability_match(required_caps, app_caps)
         lat = _latency_score(a["latency_est_ms"], constraints.max_latency_ms)

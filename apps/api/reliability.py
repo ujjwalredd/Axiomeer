@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -42,7 +42,7 @@ async def idempotency_middleware(
     if request.method.upper() not in IDEMPOTENT_METHODS:
         return await call_next(request)
 
-    key: Optional[str] = request.headers.get(IDEMPOTENCY_HEADER)
+    key: str | None = request.headers.get(IDEMPOTENCY_HEADER)
     if not key:
         return await call_next(request)
 

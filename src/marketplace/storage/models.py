@@ -1,6 +1,8 @@
-from sqlalchemy import String, Integer, Boolean, Float, Text
+from sqlalchemy import Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from marketplace.storage.db import Base
+
 
 class AppListing(Base):
     __tablename__ = "apps"

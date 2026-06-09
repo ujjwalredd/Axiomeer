@@ -1,4 +1,5 @@
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,17 +7,28 @@ from fastapi.testclient import TestClient
 os.environ["AUTH_ENABLED"] = "false"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 
-from marketplace.storage.db import Base, engine
 from apps.api.main import app
+from marketplace.storage.db import Base, engine
 
 
 @pytest.fixture(autouse=True)
 def reset_db():
-    """Drop and recreate all tables for each test."""
+    """Drop and recreate all tables for each test, and isolate global state.
+
+    Env is read live (see marketplace.settings) and app.dependency_overrides is a
+    shared global, so other test modules can leak auth state / db overrides into
+    these tests depending on collection order. Pin them per test.
+    """
+    os.environ["AUTH_ENABLED"] = "false"
+    os.environ["RATE_LIMIT_ENABLED"] = "false"
+    saved_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides.clear()  # these tests use the real engine, not a get_db override
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved_overrides)
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -101,3 +102,13 @@ def is_rate_limit_enabled() -> bool:
 RATE_LIMIT_FREE_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_FREE_TIER_PER_HOUR", "100"))
 RATE_LIMIT_STARTER_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_STARTER_TIER_PER_HOUR", "1000"))
 RATE_LIMIT_PRO_TIER_PER_HOUR: int = int(os.getenv("RATE_LIMIT_PRO_TIER_PER_HOUR", "10000"))
+
+
+def tier_limits() -> dict[str, int]:
+    """Read per-tier hourly rate limits live from the environment (see is_auth_enabled)."""
+    return {
+        "free": int(os.getenv("RATE_LIMIT_FREE_TIER_PER_HOUR", "100")),
+        "starter": int(os.getenv("RATE_LIMIT_STARTER_TIER_PER_HOUR", "1000")),
+        "pro": int(os.getenv("RATE_LIMIT_PRO_TIER_PER_HOUR", "10000")),
+        "enterprise": 100000,
+    }

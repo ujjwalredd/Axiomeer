@@ -183,7 +183,7 @@ def provider_exchangerate(base: str | None = None, target: str | None = None):
         if target:
             rate_strs = [f"{target}: {rates[target]}"] if target in rates and target != base else []
         else:
-            symbols = sorted([c for c in rates.keys() if c != base])
+            symbols = sorted([c for c in rates if c != base])
             rate_strs = [f"{c}: {rates[c]}" for c in symbols[:10]]
         res = {
             "answer": (

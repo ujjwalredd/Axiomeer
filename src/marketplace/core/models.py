@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Literal, Optional, Dict, Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, Field, field_validator
 
 Freshness = Literal["static", "daily", "realtime"]
 ShopStatus = Literal["OK", "NO_MATCH"]
@@ -9,23 +9,23 @@ ProductType = Literal["api", "model", "dataset", "tool", "aggregator"]
 
 class Constraints(BaseModel):
     citations_required: bool = True
-    freshness: Optional[Freshness] = None
-    max_latency_ms: Optional[int] = Field(default=None, ge=1)
-    max_cost_usd: Optional[float] = Field(default=None, ge=0.0)
+    freshness: Freshness | None = None
+    max_latency_ms: int | None = Field(default=None, ge=1)
+    max_cost_usd: float | None = Field(default=None, ge=0.0)
 
 
 class ShopRequest(BaseModel):
     task: str = Field(min_length=1, max_length=2000)
-    required_capabilities: List[str] = Field(default_factory=list)
+    required_capabilities: list[str] = Field(default_factory=list)
     constraints: Constraints = Field(default_factory=Constraints)
-    client_id: Optional[str] = Field(default=None, max_length=200)
+    client_id: str | None = Field(default=None, max_length=200)
 
 
 class Recommendation(BaseModel):
     app_id: str
     name: str
     score: float = Field(ge=0.0, le=1.0)
-    why: List[str] = Field(default_factory=list)
+    why: list[str] = Field(default_factory=list)
     rationale: str | None = None
     tradeoff: str | None = None
     trust_score: float | None = None
@@ -38,14 +38,14 @@ class SalesAgentRecommendation(BaseModel):
 class SalesAgentMessage(BaseModel):
     summary: str
     final_choice: str
-    recommendations: List[SalesAgentRecommendation] = Field(default_factory=list)
+    recommendations: list[SalesAgentRecommendation] = Field(default_factory=list)
 
 class ShopResponse(BaseModel):
     status: ShopStatus
-    recommendations: List[Recommendation] = Field(default_factory=list)
-    explanation: List[str] = Field(default_factory=list)
+    recommendations: list[Recommendation] = Field(default_factory=list)
+    explanation: list[str] = Field(default_factory=list)
     sales_agent: SalesAgentMessage | None = None
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class AppCreate(BaseModel):
@@ -55,10 +55,10 @@ class AppCreate(BaseModel):
 
     # Enhanced categorization (optional, backward compatible)
     category: str = Field(default="general", max_length=100)
-    subcategory: Optional[str] = Field(default=None, max_length=100)
-    tags: List[str] = Field(default_factory=list)
+    subcategory: str | None = Field(default=None, max_length=100)
+    tags: list[str] = Field(default_factory=list)
 
-    capabilities: List[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
     freshness: Freshness = "static"
     citations_supported: bool = True
 
@@ -72,24 +72,24 @@ class AppCreate(BaseModel):
     executor_url: str = Field(default="", max_length=2000)
 
     # HTTP method for executor (GET or POST)
-    http_method: Optional[str] = Field(default="GET", max_length=10)
+    http_method: str | None = Field(default="GET", max_length=10)
 
     # Input schema for LLM parameter extraction (parameters list + optional examples)
-    input_schema: Optional[Dict[str, Any]] = Field(default=None)
+    input_schema: dict[str, Any] | None = Field(default=None)
 
     # Optional metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("executor_url", mode="after")
     @classmethod
     def validate_executor_url(cls, value: str) -> str:
         if not value:
             return value
-        from marketplace.core.executor import validate_safe_url, UnsafeURLError
+        from marketplace.core.executor import UnsafeURLError, validate_safe_url
         try:
             return validate_safe_url(value)
         except UnsafeURLError as exc:
-            raise ValueError(str(exc))
+            raise ValueError(str(exc)) from exc
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -136,48 +136,48 @@ class ExecuteRequest(BaseModel):
     app_id: str
     task: str
     inputs: dict = Field(default_factory=dict)
-    fallback_app_ids: List[str] = Field(default_factory=list, description="Ordered list of fallback app IDs to try if the primary fails")
+    fallback_app_ids: list[str] = Field(default_factory=list, description="Ordered list of fallback app IDs to try if the primary fails")
 
     require_citations: bool = True
-    client_id: Optional[str] = Field(default=None, max_length=200)
+    client_id: str | None = Field(default=None, max_length=200)
 
 
 class WorkflowStep(BaseModel):
     app_id: str
     task: str
-    inputs: Dict[str, Any] = Field(default_factory=dict)
+    inputs: dict[str, Any] = Field(default_factory=dict)
     output_key: str = Field(default="", description="Key for this step's output, usable in subsequent steps via {key.field}")
 
 
 class WorkflowRequest(BaseModel):
-    steps: List[WorkflowStep] = Field(min_length=1, max_length=10)
-    client_id: Optional[str] = Field(default=None, max_length=200)
+    steps: list[WorkflowStep] = Field(min_length=1, max_length=10)
+    client_id: str | None = Field(default=None, max_length=200)
 
 
 class WorkflowStepResult(BaseModel):
     step: int
     app_id: str
     ok: bool
-    output: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    output: dict[str, Any] | None = None
+    error: str | None = None
 
 
 class WorkflowResponse(BaseModel):
     ok: bool
-    steps: List[WorkflowStepResult]
-    final_output: Optional[Dict[str, Any]] = None
+    steps: list[WorkflowStepResult]
+    final_output: dict[str, Any] | None = None
 
 class Provenance(BaseModel):
-    sources: List[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
     retrieved_at: str  # ISO timestamp
-    notes: List[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 class ExecuteResponse(BaseModel):
     app_id: str
     ok: bool
     output: dict | None = None
     provenance: Provenance | None = None
-    validation_errors: List[str] = Field(default_factory=list)
+    validation_errors: list[str] = Field(default_factory=list)
     run_id: int | None = None
 
 class RunOut(BaseModel):
@@ -189,7 +189,7 @@ class RunOut(BaseModel):
     latency_ms: int
     created_at: str
     validation_errors: list[str]
-    client_id: Optional[str] = None
+    client_id: str | None = None
 
 class RunDetailOut(BaseModel):
     id: int
@@ -200,7 +200,7 @@ class RunDetailOut(BaseModel):
     latency_ms: int
     created_at: str
     validation_errors: list[str]
-    client_id: Optional[str] = None
+    client_id: str | None = None
     output: dict | None = None
 
 class TrustOut(BaseModel):

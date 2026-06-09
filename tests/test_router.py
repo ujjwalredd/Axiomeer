@@ -1,11 +1,10 @@
-from marketplace.core.models import ShopRequest, Constraints
+from marketplace.core.models import Constraints, ShopRequest
 from marketplace.core.router import (
-    recommend,
     _capability_match,
-    _latency_score,
     _cost_score,
+    _latency_score,
+    recommend,
 )
-
 
 SAMPLE_APPS = [
     {

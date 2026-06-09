@@ -15,8 +15,9 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, TypeVar
+from typing import TypeVar
 from urllib.parse import urlparse
 
 T = TypeVar("T")

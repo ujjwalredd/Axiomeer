@@ -16,7 +16,7 @@ Drivers required at runtime (install on demand to keep base image small):
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 try:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -38,7 +38,7 @@ def _derive_async_url(sync_url: str | None) -> str | None:
         return None
     if "+asyncpg" in sync_url or "+aiosqlite" in sync_url:
         return sync_url
-    if sync_url.startswith("postgresql://") or sync_url.startswith("postgres://"):
+    if sync_url.startswith(("postgresql://", "postgres://")):
         return sync_url.replace("postgresql://", "postgresql+asyncpg://", 1).replace(
             "postgres://", "postgresql+asyncpg://", 1
         )

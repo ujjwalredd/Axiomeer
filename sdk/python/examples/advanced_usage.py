@@ -79,7 +79,7 @@ def get_weather_and_translate(city, target_language="Spanish"):
     weather_exec = weather_result.execute(marketplace, location=city)
 
     if not weather_exec.success:
-        print(f"✗ Weather lookup failed")
+        print("✗ Weather lookup failed")
         return None
 
     weather_text = str(weather_exec.result)
@@ -98,7 +98,7 @@ def get_weather_and_translate(city, target_language="Spanish"):
         print(f"✓ Translated: {translate_exec.result}")
         return translate_exec.result
     else:
-        print(f"✗ Translation failed")
+        print("✗ Translation failed")
         return weather_text
 
 get_weather_and_translate("London", "French")

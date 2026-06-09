@@ -3,11 +3,11 @@ Tests for authentication endpoints and functionality.
 """
 
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timedelta, timezone
 
 # Set environment variables before imports
 os.environ["AUTH_ENABLED"] = "true"
@@ -15,17 +15,10 @@ os.environ["RATE_LIMIT_ENABLED"] = "false"  # Disable rate limiting for auth tes
 os.environ["DATABASE_URL"] = "sqlite:///./test_auth.db"
 
 from apps.api.main import app
-from marketplace.storage.db import Base, SessionLocal
 from marketplace.auth.dependencies import get_db
-from marketplace.storage.users import User, APIKey
-from marketplace.auth.security import get_password_hash, create_access_token
+from marketplace.storage.db import Base
 
 # Import all models to ensure all tables are created
-from marketplace.storage.models import AppListing
-from marketplace.storage.runs import Run
-from marketplace.storage.messages import ConversationMessage
-from marketplace.storage.users import RateLimit, UsageRecord
-
 
 # Test database setup
 SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test_auth.db"
@@ -42,15 +35,23 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
-
-
 @pytest.fixture(scope="function", autouse=True)
 def setup_database():
-    """Create fresh database for each test."""
+    """Create fresh database for each test, and pin global state for isolation.
+
+    Env is read live (see marketplace.settings) and app.dependency_overrides is a
+    shared global; pin auth on and route db access to this module's engine per test
+    so collection order with other test modules can't break these tests.
+    """
+    os.environ["AUTH_ENABLED"] = "true"
+    os.environ["RATE_LIMIT_ENABLED"] = "false"
+    saved_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    app.dependency_overrides.update(saved_overrides)
 
 
 @pytest.fixture
@@ -228,7 +229,6 @@ class TestGetCurrentUser:
 
     def test_get_current_user_invalid_token(self, client):
         """Test getting current user with invalid token."""
-        headers = {"Authorization": "Bearer invalid_token"}
 
         response = client.get("/auth/me")
 
@@ -313,7 +313,7 @@ class TestAPIKeyAuthentication:
         # Create API key
         response = client.post("/auth/api-keys", json={"name": "Test Key"}, headers=jwt_headers)
         assert response.status_code == 201
-        api_key = response.json()["key"]
+        response.json()["key"]
 
         # Verify key was created (using JWT auth)
         response = client.get("/auth/api-keys", headers=jwt_headers)

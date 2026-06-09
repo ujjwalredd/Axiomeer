@@ -3,25 +3,18 @@ Rate limiting functionality for API endpoints.
 """
 
 from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from marketplace.storage.users import User, RateLimit
-from marketplace.settings import (
-    is_rate_limit_enabled,
-    RATE_LIMIT_FREE_TIER_PER_HOUR,
-    RATE_LIMIT_STARTER_TIER_PER_HOUR,
-    RATE_LIMIT_PRO_TIER_PER_HOUR,
-)
+from marketplace.settings import is_rate_limit_enabled, tier_limits
+from marketplace.storage.users import RateLimit, User
 
 
-# Tier-based rate limits (requests per hour)
-TIER_LIMITS = {
-    "free": RATE_LIMIT_FREE_TIER_PER_HOUR,
-    "starter": RATE_LIMIT_STARTER_TIER_PER_HOUR,
-    "pro": RATE_LIMIT_PRO_TIER_PER_HOUR,
-    "enterprise": 100000,  # Very high limit for enterprise
-}
+def _limit_for(tier: str) -> int:
+    """Hourly request limit for a tier, read live from the environment."""
+    limits = tier_limits()
+    return limits.get(tier, limits["free"])
 
 
 def check_rate_limit(
@@ -47,7 +40,7 @@ def check_rate_limit(
         return
 
     # Get tier-based limit
-    limit = TIER_LIMITS.get(user.tier, RATE_LIMIT_FREE_TIER_PER_HOUR)
+    limit = _limit_for(user.tier)
 
     # Calculate window start time
     window_start = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
@@ -120,7 +113,7 @@ def get_rate_limit_status(db: Session, user: User, endpoint: str = "global") -> 
             "reset_at": None
         }
 
-    limit = TIER_LIMITS.get(user.tier, RATE_LIMIT_FREE_TIER_PER_HOUR)
+    limit = _limit_for(user.tier)
     identifier = f"user_{user.id}"
     window_start = datetime.now(timezone.utc) - timedelta(hours=1)
 

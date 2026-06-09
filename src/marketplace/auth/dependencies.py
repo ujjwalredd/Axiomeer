@@ -2,18 +2,17 @@
 FastAPI authentication dependencies for user authentication and authorization.
 """
 
-from typing import Optional
-from fastapi import Depends, HTTPException, status, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
-from marketplace.storage.db import SessionLocal
-from marketplace.storage.users import User, APIKey
-from marketplace.auth.security import verify_token
-from marketplace.auth.rate_limiter import check_rate_limit
-from marketplace.settings import is_auth_enabled, API_KEY_HEADER
+from fastapi import Depends, Header, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
+from marketplace.auth.rate_limiter import check_rate_limit
+from marketplace.auth.security import verify_token
+from marketplace.settings import API_KEY_HEADER, is_auth_enabled
+from marketplace.storage.db import SessionLocal
+from marketplace.storage.users import APIKey, User
 
 # HTTP Bearer security scheme for JWT tokens
 security = HTTPBearer(auto_error=False)
@@ -32,10 +31,10 @@ def get_db():
 
 
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    api_key: Optional[str] = Header(None, alias=API_KEY_HEADER),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    api_key: str | None = Header(None, alias=API_KEY_HEADER),
     db: Session = Depends(get_db)
-) -> Optional[User]:
+) -> User | None:
     """
     Get the current authenticated user if credentials are provided.
     Returns None if no credentials or invalid credentials (backward compatible).
@@ -60,7 +59,7 @@ async def get_current_user_optional(
         key_hash = APIKey.hash_key(api_key)
         api_key_obj = db.query(APIKey).filter(
             APIKey.key_hash == key_hash,
-            APIKey.is_active == True
+            APIKey.is_active
         ).first()
 
         if api_key_obj:
@@ -81,7 +80,7 @@ async def get_current_user_optional(
             if user_id:
                 user = db.query(User).filter(
                     User.id == int(user_id),
-                    User.is_active == True
+                    User.is_active
                 ).first()
                 if user:
                     # Update last_login
@@ -94,7 +93,7 @@ async def get_current_user_optional(
 
 
 async def get_current_user(
-    user: Optional[User] = Depends(get_current_user_optional)
+    user: User | None = Depends(get_current_user_optional)
 ) -> User:
     """
     Get the current authenticated user (required).

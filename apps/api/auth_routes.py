@@ -2,24 +2,24 @@
 Authentication API endpoints for user signup, login, and API key management.
 """
 
-from datetime import timedelta, datetime, timezone
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from marketplace.auth.dependencies import get_db, get_current_user
-from marketplace.auth.security import verify_password, get_password_hash, create_access_token
+from marketplace.auth.dependencies import get_current_user, get_db
 from marketplace.auth.models import (
+    APIKeyCreate,
+    APIKeyCreateResponse,
+    APIKeyOut,
+    Token,
     UserCreate,
     UserLogin,
     UserOut,
-    Token,
-    APIKeyCreate,
-    APIKeyOut,
-    APIKeyCreateResponse
 )
-from marketplace.storage.users import User, APIKey
+from marketplace.auth.security import create_access_token, get_password_hash, verify_password
 from marketplace.settings import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-
+from marketplace.storage.users import APIKey, User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -50,11 +50,10 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
             )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken"
+        )
 
     # Create new user
     new_user = User(
@@ -200,11 +199,10 @@ def list_api_keys(
     Returns:
         List of user's API keys (without the actual key values)
     """
-    api_keys = db.query(APIKey).filter(
+    return db.query(APIKey).filter(
         APIKey.user_id == current_user.id
     ).order_by(APIKey.created_at.desc()).all()
 
-    return api_keys
 
 
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -240,4 +238,4 @@ def revoke_api_key(
     api_key.is_active = False
     db.commit()
 
-    return None
+    return

@@ -2,12 +2,14 @@
 Authentication and user management database models.
 """
 
-from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, Float, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from marketplace.storage.db import Base
-import secrets
 import hashlib
+import secrets
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from marketplace.storage.db import Base
 
 
 class User(Base):

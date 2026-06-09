@@ -4,14 +4,14 @@ Uses manifest input_schema when available, falls back to built-in hints.
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from marketplace.settings import OLLAMA_URL, OLLAMA_MODEL
+from marketplace.settings import OLLAMA_MODEL, OLLAMA_URL
 
 logger = logging.getLogger(__name__)
 
 # Fallback when manifest has no input_schema
-APP_PARAMETER_HINTS: Dict[str, List[str]] = {
+APP_PARAMETER_HINTS: dict[str, list[str]] = {
     "coingecko_crypto": ["coin_id", "vs_currency"],
     "coinbase_prices": ["currency_pair"],
     "blockchain_info": ["endpoint"],
@@ -28,7 +28,7 @@ APP_PARAMETER_HINTS: Dict[str, List[str]] = {
     "pubmed_search": ["term"],
 }
 
-EXAMPLE_TEMPLATES: Dict[str, str] = {
+EXAMPLE_TEMPLATES: dict[str, str] = {
     "coinbase_prices": """Examples:
 "Get XRP price in USD" → {{"currency_pair": "XRP-USD"}}
 "Bitcoin price" → {{"currency_pair": "BTC-USD"}}
@@ -52,8 +52,8 @@ def extract_parameters_from_task(
     task: str,
     app_id: str,
     executor_url: str,
-    input_schema: Optional[Dict[str, Any]] = None,
-) -> Optional[Dict]:
+    input_schema: dict[str, Any] | None = None,
+) -> dict | None:
     """
     Use LLM to intelligently extract parameters from a natural language task.
 

@@ -20,12 +20,12 @@ caching, logging, and type hints.
 import json
 import logging
 from datetime import datetime, timezone
-from time import time
-from typing import Any, Dict, Optional
 from threading import Lock
+from time import time
+from typing import Any
 
 import requests
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/providers", tags=["providers"])
 
 # Cache configuration
 _cache_lock = Lock()
-_cache_store: Dict[str, Dict[str, Any]] = {}
+_cache_store: dict[str, dict[str, Any]] = {}
 
 # Cache TTL values (in seconds)
 CACHE_TTL_SHORT = 300  # 5 minutes
@@ -48,12 +48,12 @@ CACHE_TTL_DAILY = 86400  # 24 hours
 DEFAULT_TIMEOUT = 10
 
 
-def _cache_key(prefix: str, payload: Dict[str, Any]) -> str:
+def _cache_key(prefix: str, payload: dict[str, Any]) -> str:
     """Generate a cache key from prefix and payload."""
     return f"{prefix}:{json.dumps(payload, sort_keys=True, default=str)}"
 
 
-def _cache_get(key: str) -> Optional[Dict[str, Any]]:
+def _cache_get(key: str) -> dict[str, Any] | None:
     """Retrieve value from cache if not expired."""
     with _cache_lock:
         entry = _cache_store.get(key)
@@ -65,7 +65,7 @@ def _cache_get(key: str) -> Optional[Dict[str, Any]]:
         return entry["value"]
 
 
-def _cache_set(key: str, value: Dict[str, Any], ttl_seconds: int) -> None:
+def _cache_set(key: str, value: dict[str, Any], ttl_seconds: int) -> None:
     """Store value in cache with TTL."""
     if ttl_seconds <= 0:
         return
@@ -81,9 +81,9 @@ def _now_iso() -> str:
 def _standardize_response(
     answer: str,
     citations: list[str],
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
     quality: str = "verified"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create standardized response format."""
     response = {
         "answer": answer,
@@ -96,7 +96,7 @@ def _standardize_response(
     return response
 
 
-def _error_response(message: str, citations: list[str] = None) -> Dict[str, Any]:
+def _error_response(message: str, citations: list[str] = None) -> dict[str, Any]:
     """Create standardized error response."""
     return _standardize_response(
         answer=message,
@@ -109,9 +109,9 @@ def _error_response(message: str, citations: list[str] = None) -> Dict[str, Any]
 
 @router.get("/nasa/apod")
 def nasa_apod(
-    date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
+    date: str | None = Query(None, description="Date in YYYY-MM-DD format"),
     api_key: str = Query("DEMO_KEY", description="NASA API key")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     NASA Astronomy Picture of the Day.
 
@@ -162,9 +162,9 @@ def nasa_apod(
 def nasa_mars_rover(
     rover: str = Query("curiosity", description="Rover name: curiosity, opportunity, spirit"),
     sol: int = Query(1000, description="Martian sol (day)"),
-    camera: Optional[str] = Query(None, description="Camera abbreviation (e.g., FHAZ, RHAZ, MAST)"),
+    camera: str | None = Query(None, description="Camera abbreviation (e.g., FHAZ, RHAZ, MAST)"),
     api_key: str = Query("DEMO_KEY", description="NASA API key")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     NASA Mars Rover Photos.
 
@@ -221,10 +221,10 @@ def nasa_mars_rover(
 
 @router.get("/nasa/asteroids")
 def nasa_asteroids(
-    start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
     api_key: str = Query("DEMO_KEY", description="NASA API key")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     NASA Near Earth Objects (Asteroids).
 
@@ -263,7 +263,7 @@ def nasa_asteroids(
 
         # Collect info about asteroids
         asteroids_info = []
-        for date, asteroids in near_earth_objects.items():
+        for _date, asteroids in near_earth_objects.items():
             for asteroid in asteroids[:3]:  # First 3 per date
                 name = asteroid.get("name", "Unknown")
                 is_hazardous = asteroid.get("is_potentially_hazardous_asteroid", False)
@@ -292,7 +292,7 @@ def nasa_asteroids(
 def census_demographics(
     state: str = Query("CA", description="Two-letter state code (e.g., CA)"),
     metric: str = Query("population", description="Metric to retrieve")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     US Census Bureau demographics data.
 
@@ -320,7 +320,7 @@ def census_demographics(
         data = response.json()
 
         if len(data) > 1:
-            headers = data[0]
+            data[0]
             values = data[1]
             pop = values[0] if len(values) > 0 else "N/A"
             name = values[1] if len(values) > 1 else state
@@ -345,8 +345,8 @@ def census_demographics(
 def worldbank_indicators(
     country: str = Query("USA", description="Country code (e.g., USA, GBR)"),
     indicator: str = Query("NY.GDP.MKTP.CD", description="Indicator code"),
-    date: Optional[str] = Query(None, description="Year or year range (e.g., 2020 or 2015:2020)")
-) -> Dict[str, Any]:
+    date: str | None = Query(None, description="Year or year range (e.g., 2020 or 2015:2020)")
+) -> dict[str, Any]:
     """
     World Bank economic indicators.
 
@@ -407,8 +407,8 @@ def worldbank_indicators(
 @router.get("/fred/economic")
 def fred_economic(
     series_id: str = Query("GNPCA", description="FRED series ID"),
-    api_key: Optional[str] = Query(None, description="FRED API key (required)")
-) -> Dict[str, Any]:
+    api_key: str | None = Query(None, description="FRED API key (required)")
+) -> dict[str, Any]:
     """
     Federal Reserve Economic Data (FRED).
 
@@ -469,7 +469,7 @@ def fred_economic(
 def imf_financial(
     indicator: str = Query("NGDP_RPCH", description="IMF indicator code"),
     country: str = Query("US", description="Country code")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     International Monetary Fund (IMF) financial statistics.
 
@@ -523,7 +523,7 @@ def imf_financial(
 @router.get("/eu/open_data")
 def eu_open_data(
     query: str = Query(..., description="Search query")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     European Union Open Data Portal.
 
@@ -568,8 +568,8 @@ def eu_open_data(
 def uk_police_data(
     lat: float = Query(..., description="Latitude"),
     lng: float = Query(..., description="Longitude"),
-    date: Optional[str] = Query(None, description="Date in YYYY-MM format")
-) -> Dict[str, Any]:
+    date: str | None = Query(None, description="Date in YYYY-MM format")
+) -> dict[str, Any]:
     """
     UK Police crime data.
 
@@ -620,8 +620,8 @@ def uk_police_data(
 
 @router.get("/health/covid_stats")
 def health_covid_stats(
-    country: Optional[str] = Query(None, description="Country name (e.g., USA)")
-) -> Dict[str, Any]:
+    country: str | None = Query(None, description="Country name (e.g., USA)")
+) -> dict[str, Any]:
     """
     COVID-19 statistics from disease.sh.
 
@@ -673,7 +673,7 @@ def health_covid_stats(
 @router.get("/datagov/search")
 def datagov_search(
     query: str = Query(..., description="Search query")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Data.gov dataset search.
 
@@ -723,8 +723,8 @@ def datagov_search(
 
 @router.get("/wikipedia")
 def wikipedia_search(
-    q: Optional[str] = Query(None, description="Search query for Wikipedia article")
-) -> Dict[str, Any]:
+    q: str | None = Query(None, description="Search query for Wikipedia article")
+) -> dict[str, Any]:
     """
     Wikipedia article summary search.
 
@@ -778,10 +778,10 @@ def wikipedia_search(
 
 @router.get("/arxiv/papers")
 def arxiv_papers(
-    search_query: Optional[str] = Query(None, description="Search query"),
-    query: Optional[str] = Query(None, description="Alias for search_query"),
+    search_query: str | None = Query(None, description="Search query"),
+    query: str | None = Query(None, description="Alias for search_query"),
     max_results: int = Query(5, description="Maximum results to return")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     arXiv research papers search.
 
@@ -815,7 +815,7 @@ def arxiv_papers(
 
         # Parse XML response
         import xml.etree.ElementTree as ET
-        root = ET.fromstring(response.content)
+        root = ET.fromstring(response.content)  # noqa: S314  # arXiv Atom feed, trusted source
 
         # Extract entries
         ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -852,10 +852,10 @@ def arxiv_papers(
 
 @router.get("/pubmed/search")
 def pubmed_search(
-    term: Optional[str] = Query(None, description="Search term"),
-    query: Optional[str] = Query(None, description="Alias for term"),
+    term: str | None = Query(None, description="Search term"),
+    query: str | None = Query(None, description="Alias for term"),
     max_results: int = Query(5, description="Maximum results")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     PubMed biomedical literature search.
 
@@ -936,7 +936,7 @@ def pubmed_search(
 def semantic_scholar_papers(
     query: str = Query(..., description="Search query"),
     limit: int = Query(5, description="Maximum results")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Semantic Scholar paper search.
 
@@ -996,9 +996,9 @@ def semantic_scholar_papers(
 
 @router.get("/crossref/metadata")
 def crossref_metadata(
-    doi: Optional[str] = Query(None, description="DOI to lookup"),
-    query: Optional[str] = Query(None, description="Search query")
-) -> Dict[str, Any]:
+    doi: str | None = Query(None, description="DOI to lookup"),
+    query: str | None = Query(None, description="Search query")
+) -> dict[str, Any]:
     """
     Crossref metadata for scholarly works.
 
@@ -1064,7 +1064,7 @@ def crossref_metadata(
 @router.get("/wikidata/sparql")
 def wikidata_sparql(
     query: str = Query(..., description="SPARQL query")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Wikidata SPARQL query endpoint.
 
@@ -1114,7 +1114,7 @@ def wikidata_sparql(
 @router.get("/dbpedia/sparql")
 def dbpedia_sparql(
     query: str = Query(..., description="SPARQL query")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     DBpedia SPARQL query endpoint.
 
@@ -1163,8 +1163,8 @@ def dbpedia_sparql(
 @router.get("/archive_org/search")
 def archive_org_search(
     query: str = Query(..., description="Search query"),
-    media_type: Optional[str] = Query(None, description="Media type filter (e.g., texts, audio, movies)")
-) -> Dict[str, Any]:
+    media_type: str | None = Query(None, description="Media type filter (e.g., texts, audio, movies)")
+) -> dict[str, Any]:
     """
     Internet Archive search.
 
@@ -1225,9 +1225,9 @@ def archive_org_search(
 
 @router.get("/gutenberg/books")
 def gutenberg_books(
-    query: Optional[str] = Query(None, description="Search query for books"),
-    author: Optional[str] = Query(None, description="Author name to search")
-) -> Dict[str, Any]:
+    query: str | None = Query(None, description="Search query for books"),
+    author: str | None = Query(None, description="Author name to search")
+) -> dict[str, Any]:
     """
     Project Gutenberg book search.
 
@@ -1295,7 +1295,7 @@ def gutenberg_books(
 def coingecko_crypto(
     coin_id: str = Query(..., description="Coin ID (e.g., bitcoin, ethereum, ripple for XRP)"),
     vs_currency: str = Query(default="usd", description="Target currency")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     CoinGecko cryptocurrency prices.
 
@@ -1311,7 +1311,7 @@ def coingecko_crypto(
         return cached
 
     try:
-        url = f"https://api.coingecko.com/api/v3/simple/price"
+        url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
             "ids": coin_id,
             "vs_currencies": vs_currency,
@@ -1354,7 +1354,7 @@ def coingecko_crypto(
 @router.get("/coinbase/prices")
 def coinbase_prices(
     currency_pair: str = Query(..., description="Currency pair (e.g., BTC-USD, XRP-USD, ETH-EUR)")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Coinbase exchange rates.
 
@@ -1395,7 +1395,7 @@ def coinbase_prices(
 @router.get("/blockchain/info")
 def blockchain_info(
     endpoint: str = Query("stats", description="Endpoint: stats, pools, etc.")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Blockchain.com Bitcoin data.
 
@@ -1448,7 +1448,7 @@ def blockchain_info(
 def nominatim_geocoding(
     q: str = Query(..., description="Location query"),
     limit: int = Query(5, description="Maximum results")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     OpenStreetMap Nominatim geocoding.
 
@@ -1504,7 +1504,7 @@ def nominatim_geocoding(
 def geonames_search(
     q: str = Query(..., description="Place name query"),
     username: str = Query("demo", description="GeoNames username")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     GeoNames geographic database search.
 
@@ -1560,8 +1560,8 @@ def geonames_search(
 
 @router.get("/ip/geolocation")
 def ip_geolocation(
-    ip: Optional[str] = Query(None, description="IP address (defaults to caller's IP)")
-) -> Dict[str, Any]:
+    ip: str | None = Query(None, description="IP address (defaults to caller's IP)")
+) -> dict[str, Any]:
     """
     IP geolocation lookup.
 
@@ -1577,10 +1577,7 @@ def ip_geolocation(
 
     try:
         # Using ip-api.com (free for non-commercial)
-        if ip:
-            url = f"http://ip-api.com/json/{ip}"
-        else:
-            url = "http://ip-api.com/json/"
+        url = f"http://ip-api.com/json/{ip}" if ip else "http://ip-api.com/json/"
 
         response = requests.get(url, timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
@@ -1614,10 +1611,10 @@ def ip_geolocation(
 
 @router.get("/omdb/movies")
 def omdb_movies(
-    title: Optional[str] = Query(None, description="Movie title"),
-    imdb_id: Optional[str] = Query(None, description="IMDb ID"),
-    api_key: Optional[str] = Query(None, description="OMDB API key (required)")
-) -> Dict[str, Any]:
+    title: str | None = Query(None, description="Movie title"),
+    imdb_id: str | None = Query(None, description="IMDb ID"),
+    api_key: str | None = Query(None, description="OMDB API key (required)")
+) -> dict[str, Any]:
     """
     OMDB (Open Movie Database) movie information.
 
@@ -1685,10 +1682,10 @@ def omdb_movies(
 
 @router.get("/tmdb/movies")
 def tmdb_movies(
-    query: Optional[str] = Query(None, description="Movie search query"),
-    movie_id: Optional[int] = Query(None, description="TMDB movie ID"),
-    api_key: Optional[str] = Query(None, description="TMDB API key (required)")
-) -> Dict[str, Any]:
+    query: str | None = Query(None, description="Movie search query"),
+    movie_id: int | None = Query(None, description="TMDB movie ID"),
+    api_key: str | None = Query(None, description="TMDB API key (required)")
+) -> dict[str, Any]:
     """
     The Movie Database (TMDB) movie information.
 
@@ -1772,7 +1769,7 @@ def tmdb_movies(
 def musicbrainz_search(
     query: str = Query(..., description="Artist or recording search query"),
     entity: str = Query("artist", description="Entity type: artist, recording, release")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     MusicBrainz music metadata search.
 
@@ -1831,8 +1828,8 @@ def musicbrainz_search(
 @router.get("/genius/lyrics")
 def genius_lyrics(
     query: str = Query(..., description="Song or artist search query"),
-    api_key: Optional[str] = Query(None, description="Genius API key (required)")
-) -> Dict[str, Any]:
+    api_key: str | None = Query(None, description="Genius API key (required)")
+) -> dict[str, Any]:
     """
     Genius lyrics and song metadata.
 
@@ -1896,8 +1893,8 @@ def genius_lyrics(
 @router.get("/unsplash/photos")
 def unsplash_photos(
     query: str = Query(..., description="Photo search query"),
-    api_key: Optional[str] = Query(None, description="Unsplash API key (required)")
-) -> Dict[str, Any]:
+    api_key: str | None = Query(None, description="Unsplash API key (required)")
+) -> dict[str, Any]:
     """
     Unsplash photo search.
 
@@ -1955,8 +1952,8 @@ def unsplash_photos(
 def pexels_media(
     query: str = Query(..., description="Media search query"),
     media_type: str = Query("photos", description="Media type: photos or videos"),
-    api_key: Optional[str] = Query(None, description="Pexels API key (required)")
-) -> Dict[str, Any]:
+    api_key: str | None = Query(None, description="Pexels API key (required)")
+) -> dict[str, Any]:
     """
     Pexels photos and videos search.
 
@@ -2024,7 +2021,7 @@ def pexels_media(
 def datamuse_words(
     query: str = Query("happy", description="Word query"),
     query_type: str = Query("ml", description="Query type: ml (means like), sl (sounds like), rel_* (related)")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Datamuse word-finding API.
 
@@ -2070,8 +2067,8 @@ def datamuse_words(
 @router.get("/random/user")
 def random_user(
     results: int = Query(1, description="Number of users to generate"),
-    nationality: Optional[str] = Query(None, description="Nationality code (e.g., US, GB)")
-) -> Dict[str, Any]:
+    nationality: str | None = Query(None, description="Nationality code (e.g., US, GB)")
+) -> dict[str, Any]:
     """
     Random user data generator.
 
@@ -2082,7 +2079,7 @@ def random_user(
     Returns:
         Standardized response with random user data
     """
-    cache_key = _cache_key("random:user", {"results": results, "nationality": nationality, "time": int(time())})
+    _cache_key("random:user", {"results": results, "nationality": nationality, "time": int(time())})
 
     try:
         url = "https://randomuser.me/api/"
@@ -2121,7 +2118,7 @@ def random_user(
 @router.get("/random/data")
 def random_data(
     data_type: str = Query("number", description="Data type: number, string, uuid, boolean")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Random data generator using UUID API.
 
@@ -2132,9 +2129,9 @@ def random_data(
         Standardized response with random data
     """
     try:
-        import uuid
         import random
         import string
+        import uuid
 
         if data_type == "uuid":
             data = str(uuid.uuid4())
@@ -2147,12 +2144,11 @@ def random_data(
         else:
             return _error_response(f"Unsupported data type: {data_type}")
 
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Generated random {data_type}: {data}",
             citations=[],
             metadata={"data_type": data_type, "value": data}
         )
-        return result
 
     except Exception as e:
         logger.error(f"Random data generation error: {e}")
@@ -2163,7 +2159,7 @@ def random_data(
 def qr_generator(
     data: str = Query("Hello World", description="Data to encode in QR code"),
     size: str = Query("200x200", description="QR code size (e.g., 200x200)")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     QR code generator.
 
@@ -2201,7 +2197,7 @@ def qr_generator(
 def placeholder_images(
     width: int = Query(400, description="Image width"),
     height: int = Query(300, description="Image height")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Lorem Picsum placeholder images.
 
@@ -2215,12 +2211,11 @@ def placeholder_images(
     try:
         image_url = f"https://picsum.photos/{width}/{height}"
 
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Placeholder image ({width}x{height}): {image_url}",
             citations=[image_url, "https://picsum.photos/"],
             metadata={"width": width, "height": height, "url": image_url}
         )
-        return result
 
     except Exception as e:
         logger.error(f"Placeholder image error: {e}")
@@ -2229,8 +2224,8 @@ def placeholder_images(
 
 @router.get("/joke/api")
 def joke_api(
-    category: Optional[str] = Query(None, description="Joke category")
-) -> Dict[str, Any]:
+    category: str | None = Query(None, description="Joke category")
+) -> dict[str, Any]:
     """
     JokeAPI random jokes.
 
@@ -2258,12 +2253,11 @@ def joke_api(
             delivery = data.get("delivery", "")
             joke = f"{setup} {delivery}"
 
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Joke: {joke}",
             citations=["https://jokeapi.dev/"],
             metadata={"category": data.get("category"), "type": data.get("type")}
         )
-        return result
 
     except requests.RequestException as e:
         logger.error(f"JokeAPI error: {e}")
@@ -2273,9 +2267,9 @@ def joke_api(
 @router.get("/trivia/questions")
 def trivia_questions(
     amount: int = Query(1, description="Number of questions"),
-    category: Optional[int] = Query(None, description="Category ID"),
-    difficulty: Optional[str] = Query(None, description="Difficulty: easy, medium, hard")
-) -> Dict[str, Any]:
+    category: int | None = Query(None, description="Category ID"),
+    difficulty: str | None = Query(None, description="Difficulty: easy, medium, hard")
+) -> dict[str, Any]:
     """
     Open Trivia Database questions.
 
@@ -2324,9 +2318,9 @@ def trivia_questions(
 
 @router.get("/bored/activities")
 def bored_activities(
-    activity_type: Optional[str] = Query(None, description="Activity type"),
-    participants: Optional[int] = Query(None, description="Number of participants")
-) -> Dict[str, Any]:
+    activity_type: str | None = Query(None, description="Activity type"),
+    participants: int | None = Query(None, description="Number of participants")
+) -> dict[str, Any]:
     """
     Bored API activity suggestions.
 
@@ -2353,12 +2347,11 @@ def bored_activities(
         activity_type_result = data.get("type", "")
         participants_result = data.get("participants", 0)
 
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Activity suggestion: {activity} (Type: {activity_type_result}, Participants: {participants_result})",
             citations=["https://www.boredapi.com/"],
             metadata=data
         )
-        return result
 
     except requests.RequestException as e:
         logger.error(f"Bored API error: {e}")
@@ -2379,7 +2372,7 @@ def bored_activities(
 def ollama_llama3_8b(
     prompt: str = Query(..., description="Prompt for Llama 3.1 8B"),
     ollama_url: str = Query("http://localhost:11434", description="Ollama server URL")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ollama Llama 3.1 8B model.
 
@@ -2429,7 +2422,7 @@ def ollama_llama3_8b(
 def ollama_mistral_7b(
     prompt: str = Query(..., description="Prompt for Mistral 7B"),
     ollama_url: str = Query("http://localhost:11434", description="Ollama server URL")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ollama Mistral 7B model.
 
@@ -2479,7 +2472,7 @@ def ollama_mistral_7b(
 def ollama_codellama_13b(
     prompt: str = Query(..., description="Prompt for CodeLlama 13B"),
     ollama_url: str = Query("http://localhost:11434", description="Ollama server URL")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ollama CodeLlama 13B model.
 
@@ -2529,7 +2522,7 @@ def ollama_codellama_13b(
 def ollama_deepseek_coder(
     prompt: str = Query(..., description="Prompt for Deepseek Coder"),
     ollama_url: str = Query("http://localhost:11434", description="Ollama server URL")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Ollama Deepseek Coder model.
 
@@ -2584,7 +2577,7 @@ def ollama_deepseek_coder(
 # ------------------------------
 
 @router.get("/entertainment/cat_facts")
-def cat_facts() -> Dict[str, Any]:
+def cat_facts() -> dict[str, Any]:
     """
     Random cat facts from Cat Facts API.
     
@@ -2615,8 +2608,8 @@ def cat_facts() -> Dict[str, Any]:
 
 @router.get("/entertainment/dog_images")
 def dog_images(
-    breed: Optional[str] = Query(None, description="Specific dog breed (optional)")
-) -> Dict[str, Any]:
+    breed: str | None = Query(None, description="Specific dog breed (optional)")
+) -> dict[str, Any]:
     """
     Random dog images from Dog CEO API.
     
@@ -2647,8 +2640,7 @@ def dog_images(
             
             _cache_set(_cache_key("dog:images", {"breed": breed}), result, 3600)
             return result
-        else:
-            return _error_response("Failed to fetch dog image")
+        return _error_response("Failed to fetch dog image")
             
     except requests.RequestException as e:
         logger.error(f"Dog CEO API error: {e}")
@@ -2658,7 +2650,7 @@ def dog_images(
 @router.get("/entertainment/pokemon")
 def pokemon_data(
     name: str = Query(..., description="Pokemon name or ID")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Pokemon data from PokeAPI.
     
@@ -2711,8 +2703,8 @@ Abilities: {', '.join(abilities)}"""
 
 @router.get("/entertainment/rick_morty")
 def rick_morty_characters(
-    name: Optional[str] = Query(None, description="Character name to search")
-) -> Dict[str, Any]:
+    name: str | None = Query(None, description="Character name to search")
+) -> dict[str, Any]:
     """
     Rick and Morty character data.
     
@@ -2770,7 +2762,7 @@ Location: {char.get('location', {}).get('name')}"""
 
 
 @router.get("/entertainment/breaking_bad")
-def breaking_bad_quotes() -> Dict[str, Any]:
+def breaking_bad_quotes() -> dict[str, Any]:
     """
     Random Breaking Bad quote.
     
@@ -2788,15 +2780,13 @@ def breaking_bad_quotes() -> Dict[str, Any]:
             quote = quote_data.get("quote", "")
             author = quote_data.get("author", "")
             
-            result = _standardize_response(
+            return _standardize_response(
                 answer=f'"{quote}" - {author}',
                 citations=["https://breakingbadapi.com"],
                 metadata={"author": author}
             )
             
-            return result
-        else:
-            return _error_response("No quote returned")
+        return _error_response("No quote returned")
             
     except requests.RequestException as e:
         logger.error(f"Breaking Bad API error: {e}")
@@ -2809,9 +2799,9 @@ def breaking_bad_quotes() -> Dict[str, Any]:
 
 @router.get("/food/meals")
 def themealdb_recipes(
-    query: Optional[str] = Query(None, description="Meal name to search"),
-    category: Optional[str] = Query(None, description="Meal category (e.g., 'Seafood', 'Vegetarian')")
-) -> Dict[str, Any]:
+    query: str | None = Query(None, description="Meal name to search"),
+    category: str | None = Query(None, description="Meal category (e.g., 'Seafood', 'Vegetarian')")
+) -> dict[str, Any]:
     """
     Recipe database from TheMealDB.
     
@@ -2878,8 +2868,8 @@ Instructions: {meal.get('strInstructions', '')[:200]}..."""
 
 @router.get("/food/cocktails")
 def cocktaildb_recipes(
-    query: Optional[str] = Query(None, description="Cocktail name to search")
-) -> Dict[str, Any]:
+    query: str | None = Query(None, description="Cocktail name to search")
+) -> dict[str, Any]:
     """
     Cocktail recipes from TheCocktailDB.
     
@@ -2944,7 +2934,7 @@ Instructions: {drink.get('strInstructions')}"""
 @router.get("/food/fruits")
 def fruityvice_nutrition(
     fruit: str = Query(..., description="Fruit name (e.g., 'banana', 'apple')")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Fruit nutrition data from Fruityvice.
     
@@ -2998,9 +2988,9 @@ Nutritional Information (per 100g):
 
 @router.get("/knowledge/universities")
 def universities_search(
-    country: Optional[str] = Query(None, description="Country name or code"),
-    name: Optional[str] = Query(None, description="University name to search")
-) -> Dict[str, Any]:
+    country: str | None = Query(None, description="Country name or code"),
+    name: str | None = Query(None, description="University name to search")
+) -> dict[str, Any]:
     """
     World universities database.
     
@@ -3060,7 +3050,7 @@ def universities_search(
 def zippopotam_lookup(
     country: str = Query(..., description="Country code (e.g., 'US', 'GB')"),
     zipcode: str = Query(..., description="Postal/ZIP code")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Zip code / postal code lookup via Zippopotam.
     
@@ -3115,7 +3105,7 @@ Longitude: {place.get('longitude')}"""
 @router.get("/knowledge/agify")
 def agify_predict_age(
     name: str = Query(..., description="First name to predict age from")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Predict age based on first name using Agify.io.
     
@@ -3162,7 +3152,7 @@ Confidence: Based on {count:,} data points"""
 @router.get("/knowledge/nationalize")
 def nationalize_predict_nationality(
     name: str = Query(..., description="First name to predict nationality from")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Predict nationality based on first name using Nationalize.io.
     
@@ -3219,7 +3209,7 @@ Predicted Nationalities:
 # ------------------------------
 
 @router.get("/quotes/advice")
-def adviceslip_random() -> Dict[str, Any]:
+def adviceslip_random() -> dict[str, Any]:
     """
     Random advice from Advice Slip API.
     
@@ -3235,13 +3225,12 @@ def adviceslip_random() -> Dict[str, Any]:
         slip = data.get("slip", {})
         advice = slip.get("advice", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Advice: {advice}",
             citations=["https://adviceslip.com"],
             metadata={"advice_id": slip.get("id")}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Advice Slip API error: {e}")
@@ -3250,8 +3239,8 @@ def adviceslip_random() -> Dict[str, Any]:
 
 @router.get("/quotes/quotable")
 def quotable_random(
-    tags: Optional[str] = Query(None, description="Comma-separated tags (e.g., 'wisdom,inspirational')")
-) -> Dict[str, Any]:
+    tags: str | None = Query(None, description="Comma-separated tags (e.g., 'wisdom,inspirational')")
+) -> dict[str, Any]:
     """
     Random quotes from Quotable API.
     
@@ -3279,7 +3268,7 @@ def quotable_random(
         if quote_tags:
             answer += f"\n\nTags: {', '.join(quote_tags)}"
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=answer,
             citations=["https://quotable.io"],
             metadata={
@@ -3289,7 +3278,6 @@ def quotable_random(
             }
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Quotable API error: {e}")
@@ -3297,7 +3285,7 @@ def quotable_random(
 
 
 @router.get("/quotes/zenquotes")
-def zenquotes_random() -> Dict[str, Any]:
+def zenquotes_random() -> dict[str, Any]:
     """
     Inspirational quotes from ZenQuotes API.
     
@@ -3315,15 +3303,13 @@ def zenquotes_random() -> Dict[str, Any]:
             quote = quote_data.get("q", "")
             author = quote_data.get("a", "")
             
-            result = _standardize_response(
+            return _standardize_response(
                 answer=f'"{quote}" - {author}',
                 citations=["https://zenquotes.io"],
                 metadata={"author": author}
             )
             
-            return result
-        else:
-            return _error_response("No quote returned")
+        return _error_response("No quote returned")
             
     except requests.RequestException as e:
         logger.error(f"ZenQuotes API error: {e}")
@@ -3342,7 +3328,7 @@ def zenquotes_random() -> Dict[str, Any]:
 @router.get("/fun/numbers")
 def numbers_trivia(
     number: str = Query(..., description="Number to get trivia about (or 'random')")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Number trivia from Numbers API.
     
@@ -3377,7 +3363,7 @@ def numbers_trivia(
 
 
 @router.get("/fun/useless_facts")
-def useless_facts() -> Dict[str, Any]:
+def useless_facts() -> dict[str, Any]:
     """
     Random useless facts.
     
@@ -3392,13 +3378,12 @@ def useless_facts() -> Dict[str, Any]:
         
         fact = data.get("text", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Useless Fact: {fact}",
             citations=["https://uselessfacts.jsph.pl"],
             metadata={"id": data.get("id")}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Useless Facts API error: {e}")
@@ -3407,8 +3392,8 @@ def useless_facts() -> Dict[str, Any]:
 
 @router.get("/fun/chuck_norris")
 def chuck_norris_jokes(
-    category: Optional[str] = Query(None, description="Joke category (optional)")
-) -> Dict[str, Any]:
+    category: str | None = Query(None, description="Joke category (optional)")
+) -> dict[str, Any]:
     """
     Chuck Norris jokes from official API.
     
@@ -3430,13 +3415,12 @@ def chuck_norris_jokes(
         
         joke = data.get("value", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Chuck Norris Joke: {joke}",
             citations=["https://api.chucknorris.io"],
             metadata={"category": data.get("categories", [])}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Chuck Norris API error: {e}")
@@ -3444,7 +3428,7 @@ def chuck_norris_jokes(
 
 
 @router.get("/fun/kanye_quotes")
-def kanye_quotes() -> Dict[str, Any]:
+def kanye_quotes() -> dict[str, Any]:
     """
     Random Kanye West quotes.
     
@@ -3459,13 +3443,12 @@ def kanye_quotes() -> Dict[str, Any]:
         
         quote = data.get("quote", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f'Kanye West: "{quote}"',
             citations=["https://kanye.rest"],
             metadata={}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Kanye REST API error: {e}")
@@ -3473,7 +3456,7 @@ def kanye_quotes() -> Dict[str, Any]:
 
 
 @router.get("/fun/corporate_bs")
-def corporate_bs() -> Dict[str, Any]:
+def corporate_bs() -> dict[str, Any]:
     """
     Corporate buzzword generator.
     
@@ -3488,13 +3471,12 @@ def corporate_bs() -> Dict[str, Any]:
         
         phrase = data.get("phrase", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Corporate BS: {phrase}",
             citations=["https://corporatebs-generator.sameerkumar.website"],
             metadata={}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Corporate BS API error: {e}")
@@ -3502,7 +3484,7 @@ def corporate_bs() -> Dict[str, Any]:
 
 
 @router.get("/fun/yesno")
-def yesno_answer() -> Dict[str, Any]:
+def yesno_answer() -> dict[str, Any]:
     """
     Random yes/no answer with GIF.
     
@@ -3518,13 +3500,12 @@ def yesno_answer() -> Dict[str, Any]:
         answer = data.get("answer", "").upper()
         image = data.get("image", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Answer: {answer}",
             citations=["https://yesno.wtf"],
             metadata={"answer": answer, "image": image}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"YesNo API error: {e}")
@@ -3532,7 +3513,7 @@ def yesno_answer() -> Dict[str, Any]:
 
 
 @router.get("/fun/coinflip")
-def coinflip() -> Dict[str, Any]:
+def coinflip() -> dict[str, Any]:
     """
     Coin flip simulation.
     
@@ -3543,20 +3524,19 @@ def coinflip() -> Dict[str, Any]:
     
     result_value = random.choice(["Heads", "Tails"])
     
-    result = _standardize_response(
+    return _standardize_response(
         answer=f"Coin Flip Result: {result_value}",
         citations=["internal"],
         metadata={"result": result_value}
     )
     
-    return result
 
 
 @router.get("/fun/dice_roll")
 def dice_roll(
     sides: int = Query(6, description="Number of sides on the die"),
     count: int = Query(1, description="Number of dice to roll")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Dice roll simulation.
     
@@ -3579,13 +3559,12 @@ def dice_roll(
     
     answer = f"Rolled {count}d{sides}: {rolls}\nTotal: {total}"
     
-    result = _standardize_response(
+    return _standardize_response(
         answer=answer,
         citations=["internal"],
         metadata={"rolls": rolls, "total": total, "sides": sides, "count": count}
     )
     
-    return result
 
 
 # ------------------------------
@@ -3593,7 +3572,7 @@ def dice_roll(
 # ------------------------------
 
 @router.get("/utilities/ipify")
-def ipify_public_ip() -> Dict[str, Any]:
+def ipify_public_ip() -> dict[str, Any]:
     """
     Get public IP address using ipify.
     
@@ -3608,13 +3587,12 @@ def ipify_public_ip() -> Dict[str, Any]:
         
         ip = data.get("ip", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Your Public IP: {ip}",
             citations=["https://www.ipify.org"],
             metadata={"ip": ip}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Ipify API error: {e}")
@@ -3624,7 +3602,7 @@ def ipify_public_ip() -> Dict[str, Any]:
 @router.get("/utilities/uuid")
 def uuid_generator(
     count: int = Query(1, description="Number of UUIDs to generate (max 10)")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate UUID(s).
     
@@ -3646,19 +3624,18 @@ def uuid_generator(
     else:
         answer = f"Generated {count} UUIDs:\n" + "\n".join(f"{i+1}. {u}" for i, u in enumerate(uuids))
     
-    result = _standardize_response(
+    return _standardize_response(
         answer=answer,
         citations=["internal"],
         metadata={"uuids": uuids, "count": count}
     )
     
-    return result
 
 
 @router.get("/utilities/color_info")
 def color_info(
     color: str = Query(..., description="Color hex code (without #) or name")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get color information from The Color API.
     
@@ -3707,7 +3684,7 @@ HSL: {data.get("hsl", {}).get("value", "")}"""
 @router.get("/utilities/base64_encode")
 def base64_encode(
     text: str = Query(..., description="Text to encode")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Encode text to Base64.
     
@@ -3722,13 +3699,12 @@ def base64_encode(
     try:
         encoded = base64.b64encode(text.encode('utf-8')).decode('utf-8')
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Base64 Encoded: {encoded}",
             citations=["internal"],
             metadata={"original": text, "encoded": encoded}
         )
         
-        return result
         
     except Exception as e:
         logger.error(f"Base64 encoding error: {e}")
@@ -3738,7 +3714,7 @@ def base64_encode(
 @router.get("/utilities/base64_decode")
 def base64_decode(
     encoded: str = Query(..., description="Base64 text to decode")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Decode Base64 to text.
     
@@ -3753,13 +3729,12 @@ def base64_decode(
     try:
         decoded = base64.b64decode(encoded.encode('utf-8')).decode('utf-8')
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Decoded: {decoded}",
             citations=["internal"],
             metadata={"encoded": encoded, "decoded": decoded}
         )
         
-        return result
         
     except Exception as e:
         logger.error(f"Base64 decoding error: {e}")
@@ -3769,7 +3744,7 @@ def base64_decode(
 @router.get("/utilities/httpbin_test")
 def httpbin_test(
     endpoint: str = Query("get", description="Endpoint to test (get, post, headers, ip, user-agent)")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     HTTP request/response testing via httpbin.
     
@@ -3785,13 +3760,12 @@ def httpbin_test(
         response.raise_for_status()
         data = response.json()
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"HTTPBin Test ({endpoint}): {str(data)[:200]}...",
             citations=["https://httpbin.org"],
             metadata={"endpoint": endpoint, "data": data}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"HTTPBin API error: {e}")
@@ -3801,7 +3775,7 @@ def httpbin_test(
 @router.get("/utilities/postman_echo")
 def postman_echo(
     message: str = Query(..., description="Message to echo back")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Echo service from Postman Echo API.
     
@@ -3820,13 +3794,12 @@ def postman_echo(
         
         echoed = data.get("args", {}).get("message", "")
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Echo: {echoed}",
             citations=["https://postman-echo.com"],
             metadata={"original": message, "echoed": echoed}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Postman Echo API error: {e}")
@@ -3841,7 +3814,7 @@ def postman_echo(
 def newton_math(
     operation: str = Query(..., description="Math operation (simplify, factor, derive, integrate, zeroes, area, cos, sin, tan, log, abs)"),
     expression: str = Query(..., description="Math expression to compute")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Symbolic math operations via Newton API.
     
@@ -3887,7 +3860,7 @@ Result: {answer_value}"""
 @router.get("/science/periodic_table")
 def periodic_table(
     element: str = Query(..., description="Element symbol or name (e.g., 'H', 'Hydrogen')")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Periodic table element data.
     
@@ -3943,8 +3916,8 @@ Discovered By: {data.get('discoveredBy', 'Unknown')}"""
 def sunrise_sunset(
     lat: float = Query(..., description="Latitude"),
     lng: float = Query(..., description="Longitude"),
-    date: Optional[str] = Query(None, description="Date (YYYY-MM-DD), defaults to today")
-) -> Dict[str, Any]:
+    date: str | None = Query(None, description="Date (YYYY-MM-DD), defaults to today")
+) -> dict[str, Any]:
     """
     Sunrise and sunset times for a location.
     
@@ -3988,8 +3961,7 @@ Civil Twilight End: {results.get('civil_twilight_end')}"""
             
             _cache_set(cache_key, result, CACHE_TTL_MEDIUM)
             return result
-        else:
-            return _error_response("Invalid location or date")
+        return _error_response("Invalid location or date")
             
     except requests.RequestException as e:
         logger.error(f"Sunrise-Sunset API error: {e}")
@@ -3998,9 +3970,9 @@ Civil Twilight End: {results.get('civil_twilight_end')}"""
 
 @router.get("/science/random_user_data")
 def random_user_data(
-    gender: Optional[str] = Query(None, description="Gender filter (male/female)"),
-    nat: Optional[str] = Query(None, description="Nationality code (e.g., US, GB, FR)")
-) -> Dict[str, Any]:
+    gender: str | None = Query(None, description="Gender filter (male/female)"),
+    nat: str | None = Query(None, description="Nationality code (e.g., US, GB, FR)")
+) -> dict[str, Any]:
     """
     Generate random user data from RandomUser API.
     
@@ -4036,15 +4008,13 @@ Phone: {user.get('phone')}
 Location: {location.get('city')}, {location.get('state')}, {location.get('country')}
 Age: {user.get('dob', {}).get('age')}"""
             
-            result = _standardize_response(
+            return _standardize_response(
                 answer=answer,
                 citations=["https://randomuser.me"],
                 metadata={"user": user}
             )
             
-            return result
-        else:
-            return _error_response("No user data returned")
+        return _error_response("No user data returned")
             
     except requests.RequestException as e:
         logger.error(f"RandomUser API error: {e}")
@@ -4052,7 +4022,7 @@ Age: {user.get('dob', {}).get('age')}"""
 
 
 @router.get("/science/space_people")
-def space_people() -> Dict[str, Any]:
+def space_people() -> dict[str, Any]:
     """
     Get list of people currently in space.
     
@@ -4102,7 +4072,7 @@ def space_people() -> Dict[str, Any]:
 def lorem_ipsum(
     paragraphs: int = Query(1, description="Number of paragraphs (1-10)"),
     length: str = Query("medium", description="Length: short, medium, long")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate Lorem Ipsum placeholder text.
     
@@ -4122,13 +4092,12 @@ def lorem_ipsum(
         response.raise_for_status()
         text = response.text
         
-        result = _standardize_response(
+        return _standardize_response(
             answer=f"Lorem Ipsum ({paragraphs} paragraphs):\n\n{text}",
             citations=["https://loripsum.net"],
             metadata={"paragraphs": paragraphs, "length": length}
         )
         
-        return result
         
     except requests.RequestException as e:
         logger.error(f"Lorem Ipsum API error: {e}")
@@ -4138,7 +4107,7 @@ def lorem_ipsum(
 @router.get("/language/language_detect")
 def language_detect(
     text: str = Query(..., description="Text to detect language")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Detect language of text using LibreTranslate.
     
@@ -4175,8 +4144,7 @@ Confidence: {confidence:.1f}%"""
             
             _cache_set(cache_key, result, CACHE_TTL_LONG)
             return result
-        else:
-            return _error_response("Could not detect language")
+        return _error_response("Could not detect language")
             
     except requests.RequestException as e:
         logger.error(f"Language Detection API error: {e}")
@@ -4186,7 +4154,7 @@ Confidence: {confidence:.1f}%"""
 @router.get("/language/word_definition")
 def word_definition(
     word: str = Query(..., description="Word to define")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get word definition from Free Dictionary API.
     
@@ -4234,8 +4202,7 @@ Definitions:
             
             _cache_set(cache_key, result, CACHE_TTL_LONG)
             return result
-        else:
-            return _error_response(f"No definition found for: {word}")
+        return _error_response(f"No definition found for: {word}")
             
     except requests.RequestException as e:
         logger.error(f"Dictionary API error: {e}")
@@ -4245,7 +4212,7 @@ Definitions:
 @router.get("/language/word_synonyms")
 def word_synonyms(
     word: str = Query(..., description="Word to find synonyms for")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Find synonyms using Datamuse API.
     
@@ -4281,8 +4248,7 @@ def word_synonyms(
             
             _cache_set(cache_key, result, CACHE_TTL_LONG)
             return result
-        else:
-            return _error_response(f"No synonyms found for: {word}")
+        return _error_response(f"No synonyms found for: {word}")
             
     except requests.RequestException as e:
         logger.error(f"Datamuse API error: {e}")
@@ -4292,7 +4258,7 @@ def word_synonyms(
 @router.get("/language/gender_from_name")
 def gender_from_name(
     name: str = Query(..., description="First name to predict gender from")
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Predict gender based on first name using Genderize.io.
     

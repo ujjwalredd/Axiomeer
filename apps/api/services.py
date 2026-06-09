@@ -14,14 +14,13 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
+from apps.api.dependencies import TRUST_CACHE_KEY, cache_get, cache_set
 from marketplace.core.models import AppOut, TrustOut
 from marketplace.core.router import _latency_score
 from marketplace.settings import TRUST_CACHE_TTL
 from marketplace.storage.messages import ConversationMessage
 from marketplace.storage.models import AppListing
 from marketplace.storage.runs import Run
-
-from apps.api.dependencies import TRUST_CACHE_KEY, cache_get, cache_set
 
 logger = logging.getLogger(__name__)
 

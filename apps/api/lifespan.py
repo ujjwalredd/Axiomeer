@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from time import perf_counter
 
 import httpx
@@ -107,9 +107,7 @@ async def lifespan(app: FastAPI):
 
     for task in (health_task, quarantine_task):
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     await close_shared_async_client()

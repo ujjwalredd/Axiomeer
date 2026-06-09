@@ -7,8 +7,8 @@ become no-ops so the app still boots in minimal dev environments.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from time import perf_counter
-from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from prometheus_client import (
+        CONTENT_TYPE_LATEST,
         CollectorRegistry,
         Counter,
         Histogram,
-        CONTENT_TYPE_LATEST,
         generate_latest,
     )
 

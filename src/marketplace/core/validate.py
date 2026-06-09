@@ -1,7 +1,8 @@
-from typing import Any, List
+from typing import Any
 
-def validate_output(payload: Any, require_citations: bool) -> List[str]:
-    errors: List[str] = []
+
+def validate_output(payload: Any, require_citations: bool) -> list[str]:
+    errors: list[str] = []
 
     if not isinstance(payload, dict):
         errors.append("Provider output must be a JSON object.")

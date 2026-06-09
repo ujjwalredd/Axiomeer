@@ -1,17 +1,12 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from marketplace.settings import DATABASE_URL
 
 # Import Base and all models for autogenerate support
 from marketplace.storage.db import Base
-from marketplace.storage.models import AppListing
-from marketplace.storage.runs import Run
-from marketplace.storage.messages import ConversationMessage
-from marketplace.storage.users import User, APIKey, UsageRecord, RateLimit
-from marketplace.settings import DATABASE_URL
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

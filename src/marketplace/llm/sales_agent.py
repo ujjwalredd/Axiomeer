@@ -3,10 +3,10 @@ import json
 import re
 from typing import Any
 
-from marketplace.llm.ollama_client import ollama_generate, OllamaConnectionError
+from marketplace.llm.ollama_client import OllamaConnectionError, ollama_generate
 from marketplace.settings import (
-    SALES_AGENT_MODEL,
     SALES_AGENT_MAX_TOKENS,
+    SALES_AGENT_MODEL,
     SALES_AGENT_TEMPERATURE,
     SALES_AGENT_TIMEOUT,
 )
@@ -536,15 +536,13 @@ def sales_recommendation(
             except Exception as e:
                 raise SalesAgentError("sales_agent_invalid_json") from e
     try:
-        parsed = _parse_sales_payload(payload, candidates)
-        return parsed
+        return _parse_sales_payload(payload, candidates)
     except SalesAgentError as e:
         last_error = e
         allowed_ids = [c.get("app_id") for c in candidates if c.get("app_id")]
         try:
             repaired = _repair_sales_payload(raw, task, candidates, allowed_ids)
-            parsed = _parse_sales_payload(repaired, candidates)
-            return parsed
+            return _parse_sales_payload(repaired, candidates)
         except Exception as e2:
             raise SalesAgentError(str(last_error)) from e2
 
