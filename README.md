@@ -57,34 +57,37 @@ result = client.shop("get weather in Tokyo")
 
 ## Architecture
 
+Axiomeer routes a request in two stages: a **deterministic ranker narrows** the
+91 APIs to a shortlist, then an **LLM sales agent decides** the final pick. The
+`/shop` endpoint returns the recommendation; `/execute` runs the chosen API.
+
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        AI AGENT                              │
-│            "I need current weather data"                     │
-└─────────────────────────┬────────────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    AXIOMEER API                              │
-│                                                              │
-│   ┌─────────────────┐    ┌─────────────────┐                 │
-│   │ Semantic Search │    │  LLM Capability │                 │
-│   │ (FAISS 384-dim) │    │   Extraction    │                 │
-│   └─────────────────┘    └─────────────────┘                 │
-│                                                              │
-│   ┌─────────────────────────────────────────┐                │
-│   │         Weighted Ranking                │                │
-│   │  capability(70%) + relevance(25%)       │                │
-│   │  + trust(15%) - latency(20%) - cost(10%)│                │
-│   └─────────────────────────────────────────┘                │
-│                                                              │
-│   ┌─────────────────────────────────────────┐                │
-│   │     91 APIs across 14 categories        │                │
-│   └─────────────────────────────────────────┘                │
-└─────────────────────────┬────────────────────────────────────┘
-                          │
-                          ▼
-              Ranked API recommendations
+┌──────────────────────────── AI AGENT ─────────────────────────┐
+│              "I need current weather data"                    │
+└─────────────────────────────┬─────────────────────────────────┘
+                              ▼
+┌─────────────── AXIOMEER  /shop ───────────────────────────────┐
+│  auth + rate-limit  →  shop-cache  →  user-scoped memory      │
+│                              │                                │
+│   1. FAISS semantic search (384-dim)                          │
+│                              ▼          (quarantine filter    │
+│   2. Weighted ranking                    drops bad providers) │
+│      capability(70%) + relevance(25%)                         │
+│      + trust(15%) − latency(20%) − cost(10%)                  │
+│                              │  top-K (8 candidates)          │
+│                              ▼                                │
+│   3. LLM sales agent (Ollama) → final choice + rationale      │
+└─────────────────────────────┬─────────────────────────────────┘
+                              ▼
+            Ranked recommendation  (app_id + why + tradeoff)
+
+
+┌─────────────── AXIOMEER  /execute ────────────────────────────┐
+│  app_id + task                                                │
+│     → LLM parameter extraction (task → typed inputs)          │
+│     → SSRF-checked HTTP fetch (retry + provider fallback)     │
+│     → result + citations + provenance                         │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---
