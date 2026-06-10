@@ -348,4 +348,4 @@ class AgentMarketplace:
             response = requests.get(url, timeout=self.timeout)
             return response.json()
         except requests.exceptions.RequestException as e:
-            raise AxiomeerError(f"Health check failed: {str(e)}")
+            raise AxiomeerError(f"Health check failed: {str(e)}") from e

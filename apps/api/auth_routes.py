@@ -23,6 +23,17 @@ from marketplace.storage.users import APIKey, User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# Precomputed bcrypt hash of a throwaway value. Verifying against it when a user
+# is not found keeps login response time constant regardless of account
+# existence (mitigates timing-based user enumeration).
+_DUMMY_PASSWORD_HASH = get_password_hash("axiomeer-dummy-password-for-constant-time")
+
+
+def _dummy_password_verify(password: str) -> bool:
+    """Run a bcrypt verify against a dummy hash; always returns False."""
+    verify_password(password, _DUMMY_PASSWORD_HASH)
+    return False
+
 
 @router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def signup(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -91,7 +102,16 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     # Find user by email
     user = db.query(User).filter(User.email == user_data.email).first()
 
-    if not user or not verify_password(user_data.password, user.password_hash):
+    # Constant-time auth check: always run a bcrypt verification even when the
+    # user does not exist, so response timing cannot be used to enumerate which
+    # emails are registered.
+    password_ok = (
+        verify_password(user_data.password, user.password_hash)
+        if user
+        else _dummy_password_verify(user_data.password)
+    )
+
+    if not user or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

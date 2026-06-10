@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from marketplace.settings import OLLAMA_MODEL, OLLAMA_URL
+from marketplace.settings import OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +84,6 @@ Required parameters: {', '.join(expected_params)}
 {examples}
 
 IMPORTANT: Use ONLY these parameter names: {', '.join(expected_params)}
-For currency_pair format: "SYMBOL-CURRENCY" (e.g., "XRP-USD")
-For coin_id: XRP="ripple", Bitcoin="bitcoin", ETH="ethereum"
 
 JSON:"""
 
@@ -101,7 +99,7 @@ JSON:"""
                 "stream": False,
                 "temperature": 0.1,
             },
-            timeout=10,
+            timeout=OLLAMA_TIMEOUT,
         )
 
         if not response.ok:
@@ -117,9 +115,34 @@ JSON:"""
         elif "```" in llm_output:
             llm_output = llm_output.split("```")[1].split("```")[0].strip()
 
-        extracted = json.loads(llm_output)
+        try:
+            extracted = json.loads(llm_output)
+        except json.JSONDecodeError:
+            # The model often echoes the example objects before its own answer, and
+            # sometimes adds trailing commas. Try each {...} block, last one first
+            # (the model's actual answer is normally last), strip trailing commas.
+            import re
+            extracted = None
+            for block in reversed(re.findall(r"\{[^{}]*\}", llm_output, re.DOTALL)):
+                try:
+                    candidate = json.loads(re.sub(r",(\s*[}\]])", r"\1", block))
+                except json.JSONDecodeError:
+                    continue
+                # Skip the model's "blank template" object ({"lat": "", ...}); keep
+                # the first block that actually carries values.
+                if isinstance(candidate, dict) and any(
+                    v not in ("", None) for v in candidate.values()
+                ):
+                    extracted = candidate
+                    break
+            if extracted is None:
+                raise
 
-        if isinstance(extracted, dict) and extracted:
+        if isinstance(extracted, dict):
+            # Drop empty/blank values so we never forward e.g. lat="" to a provider.
+            extracted = {k: v for k, v in extracted.items() if v not in ("", None)}
+
+        if extracted:
             logger.info(f"Extracted parameters for {app_id}: {extracted}")
             return extracted
 
