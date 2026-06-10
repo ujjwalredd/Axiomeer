@@ -25,14 +25,28 @@ def main() -> int:
     )
 
     errors = []
+    # capability -> count of manifests that advertise it AND have a reachable
+    # (non-empty executor_url) provider. Guards against advertising a capability
+    # that no working provider can actually serve (the "translate dead-end").
+    capability_providers: dict[str, int] = {}
     for manifest_path in sorted(manifest_paths):
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = AppCreate.model_validate(raw)
             if not manifest.executor_url:
                 errors.append(f"{manifest_path.name}: missing executor_url")
+                continue
+            for cap in manifest.capabilities or []:
+                key = cap.strip().lower()
+                if key:
+                    capability_providers[key] = capability_providers.get(key, 0) + 1
         except Exception as e:
             errors.append(f"{manifest_path.name}: validation failed - {e}")
+
+    # Every advertised capability must have at least one reachable provider.
+    orphan_caps = sorted(c for c, n in capability_providers.items() if n < 1)
+    for cap in orphan_caps:
+        errors.append(f"capability '{cap}' advertised but has no reachable provider")
 
     if errors:
         print("Manifest validation FAILED:\n")
@@ -40,7 +54,10 @@ def main() -> int:
             print(f"  - {err}")
         return 1
 
-    print(f"OK: Validated {len(manifest_paths)} manifests")
+    print(
+        f"OK: Validated {len(manifest_paths)} manifests, "
+        f"{len(capability_providers)} capabilities each with >=1 reachable provider"
+    )
     return 0
 
 

@@ -69,3 +69,27 @@ def cache_set(key: str, value: Any, ttl_seconds: int) -> None:
 def cache_available() -> bool:
     """Whether Redis is available."""
     return _init_redis()
+
+
+def rate_incr(key: str, window_seconds: int) -> tuple[int, int] | None:
+    """Atomically increment a fixed-window counter.
+
+    Uses Redis INCR (atomic) and sets the window TTL on first hit, so concurrent
+    requests can't overshoot the limit the way a read-then-write DB check can.
+
+    Returns (current_count, ttl_seconds) on success, or None when Redis is
+    unavailable so the caller can fall back to its own (non-atomic) store.
+    """
+    if not _init_redis():
+        return None
+    try:
+        count = int(_redis_client.incr(key))
+        if count == 1:
+            _redis_client.expire(key, window_seconds)
+        ttl = _redis_client.ttl(key)
+        # ttl is -1 (no expiry) or -2 (missing) in edge cases; normalize.
+        ttl_seconds = ttl if isinstance(ttl, int) and ttl > 0 else window_seconds
+        return count, ttl_seconds
+    except Exception as e:
+        logger.warning(f"Redis rate_incr failed: {e}")
+        return None

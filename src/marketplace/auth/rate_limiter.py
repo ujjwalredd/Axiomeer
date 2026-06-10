@@ -42,6 +42,31 @@ def check_rate_limit(
     # Get tier-based limit
     limit = _limit_for(user.tier)
 
+    # Preferred path: atomic Redis fixed-window counter. INCR is atomic, so
+    # concurrent requests can't overshoot the limit (unlike the read-then-write
+    # DB path below). Falls through to the DB store when Redis is unavailable.
+    from marketplace.core.cache import rate_incr
+
+    redis_key = f"ratelimit:{endpoint}:user_{user.id}"
+    redis_result = rate_incr(redis_key, window_minutes * 60)
+    if redis_result is not None:
+        count, ttl_seconds = redis_result
+        if count > limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Rate limit exceeded. Tier: {user.tier}, Limit: {limit} requests per hour. "
+                    f"Try again in {ttl_seconds} seconds."
+                ),
+                headers={
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(ttl_seconds),
+                    "Retry-After": str(ttl_seconds),
+                },
+            )
+        return
+
     # Calculate window start time
     window_start = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
 

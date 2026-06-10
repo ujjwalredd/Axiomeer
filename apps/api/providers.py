@@ -814,8 +814,8 @@ def arxiv_papers(
         response.raise_for_status()
 
         # Parse XML response
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(response.content)  # noqa: S314  # arXiv Atom feed, trusted source
+        import defusedxml.ElementTree as ET
+        root = ET.fromstring(response.content)
 
         # Extract entries
         ns = {"atom": "http://www.w3.org/2005/Atom"}

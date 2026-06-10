@@ -17,6 +17,7 @@ dependencies = [
   "sentence-transformers>=2.2.0",
   "faiss-cpu>=1.7.4",
   "numpy>=1.24.0",
+  "defusedxml>=0.7.1",
   # Authentication dependencies
   "passlib[bcrypt]>=1.7.4",
   "python-jose[cryptography]>=3.3.0",

@@ -32,6 +32,13 @@ W_REL: float = float(os.getenv("W_REL", "0.25"))
 MIN_CAP_COVERAGE: float = float(os.getenv("MIN_CAP_COVERAGE", "1.0"))
 MIN_RELEVANCE_SCORE: float = float(os.getenv("MIN_RELEVANCE_SCORE", "0.08"))
 MIN_TOTAL_SCORE: float = float(os.getenv("MIN_TOTAL_SCORE", "0.55"))
+# Capability-overlap gate (used when the caller specifies no required_capabilities).
+# An app is only eligible if it shares a real lexical term with the task
+# (tf-idf > MIN_LEXICAL_OVERLAP) OR is a genuinely strong semantic match
+# (>= MIN_STRONG_SEMANTIC). This stops weak embedding similarity (~0.2 against
+# anything) from letting unrelated providers ride the flat capability score.
+MIN_LEXICAL_OVERLAP: float = float(os.getenv("MIN_LEXICAL_OVERLAP", "0.0"))
+MIN_STRONG_SEMANTIC: float = float(os.getenv("MIN_STRONG_SEMANTIC", "0.35"))
 SALES_AGENT_TOP_K: int = int(os.getenv("SALES_AGENT_TOP_K", "8"))
 
 # Conversation memory

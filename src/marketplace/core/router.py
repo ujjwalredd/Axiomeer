@@ -8,7 +8,9 @@ from collections.abc import Iterable
 from marketplace.core.models import Recommendation, ShopRequest
 from marketplace.settings import (
     MIN_CAP_COVERAGE,
+    MIN_LEXICAL_OVERLAP,
     MIN_RELEVANCE_SCORE,
+    MIN_STRONG_SEMANTIC,
     MIN_TOTAL_SCORE,
     W_CAP,
     W_COST,
@@ -211,8 +213,21 @@ def recommend(
         cost = _cost_score(a["cost_est_usd"], constraints.max_cost_usd)
         rel = relevance_scores[idx] if idx < len(relevance_scores) else 0.0
 
-        if required_caps and cap < MIN_CAP_COVERAGE:
-            continue
+        if required_caps:
+            # Explicit capabilities requested: require full coverage.
+            if cap < MIN_CAP_COVERAGE:
+                continue
+        else:
+            # No explicit capabilities: gate on actual task overlap so the flat
+            # capability score can't carry an unrelated provider. The app must
+            # share a real lexical term OR be a strong semantic match — weak
+            # incidental embedding similarity does not qualify.
+            tfidf_score = tfidf_scores[idx] if idx < len(tfidf_scores) else 0.0
+            semantic_score = semantic_boost.get(a.get("id"), 0.0)
+            has_lexical_overlap = tfidf_score > MIN_LEXICAL_OVERLAP
+            is_strong_semantic = semantic_score >= MIN_STRONG_SEMANTIC
+            if not (has_lexical_overlap or is_strong_semantic):
+                continue
         if rel < MIN_RELEVANCE_SCORE:
             continue
 

@@ -2,15 +2,30 @@
 Security utilities for password hashing and JWT token generation.
 """
 
+import os
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from marketplace.settings import JWT_ACCESS_TOKEN_EXPIRE_MINUTES, JWT_ALGORITHM, JWT_SECRET_KEY
+from marketplace.settings import JWT_ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _jwt_secret() -> str:
+    """Read JWT_SECRET_KEY live from the environment.
+
+    Like the other auth toggles, this avoids freezing the value at import time
+    so the secret can be set/rotated after the module is first imported (and so
+    tests can configure it deterministically). See marketplace.settings.
+    """
+    return os.getenv("JWT_SECRET_KEY", "")
+
+
+def _jwt_algorithm() -> str:
+    return os.getenv("JWT_ALGORITHM", "HS256")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -59,7 +74,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
         expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return jwt.encode(to_encode, _jwt_secret(), algorithm=_jwt_algorithm())
 
 
 
@@ -74,6 +89,6 @@ def verify_token(token: str) -> dict | None:
         Decoded token payload if valid, None if invalid
     """
     try:
-        return jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return jwt.decode(token, _jwt_secret(), algorithms=[_jwt_algorithm()])
     except JWTError:
         return None
